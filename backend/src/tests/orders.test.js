@@ -7,6 +7,20 @@ let productA;
 let productB;
 
 async function seedCatalog() {
+  const storeAdmin = await db.User.create({
+    name: 'Store Owner',
+    email: 'orders-store@techstore.com',
+    passwordHash: await bcrypt.hash('secret123', 10),
+    role: 'store_admin',
+  });
+  const store = await db.Store.create({
+    name: 'Tienda Pedidos',
+    slug: 'tienda-pedidos',
+    whatsappNumber: '+541111111111',
+    ownerUserId: storeAdmin.id,
+    status: 'approved',
+  });
+
   const categories = await db.Category.bulkCreate(
     [
       { name: 'Celulares', slug: 'celulares' },
@@ -18,15 +32,30 @@ async function seedCatalog() {
 
   [productA] = await db.Product.bulkCreate(
     [
-      { name: 'iPhone 15', slug: 'iphone-15', price: 1000, stock: 5, categoryId: celulares.id },
+      {
+        name: 'iPhone 15',
+        slug: 'iphone-15',
+        price: 1000,
+        stock: 5,
+        categoryId: celulares.id,
+        storeId: store.id,
+      },
       {
         name: 'Sony WH-1000XM5',
         slug: 'sony-wh-1000xm5',
         price: 400,
         stock: 3,
         categoryId: audio.id,
+        storeId: store.id,
       },
-      { name: 'AirPods Pro 2', slug: 'airpods-pro-2', price: 280, stock: 2, categoryId: audio.id },
+      {
+        name: 'AirPods Pro 2',
+        slug: 'airpods-pro-2',
+        price: 280,
+        stock: 2,
+        categoryId: audio.id,
+        storeId: store.id,
+      },
     ],
     { returning: true },
   );
@@ -55,7 +84,7 @@ async function stockOf(slug) {
 
 describe('Orders API', () => {
   beforeEach(async () => {
-    await db.sequelize.query('TRUNCATE TABLE categories, users CASCADE;');
+    await db.sequelize.query('TRUNCATE TABLE categories, stores, users CASCADE;');
     await seedCatalog();
   });
 

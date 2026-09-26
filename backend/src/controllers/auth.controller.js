@@ -4,13 +4,27 @@ import { signToken } from '../utils/token.util.js';
 
 const SALT_ROUNDS = 10;
 
-function toPublicUser(user) {
-  return {
+async function toPublicUser(user) {
+  const store = await db.Store.findOne({
+    where: { ownerUserId: user.id },
+    attributes: ['id', 'status', 'rejectedReason'],
+  });
+
+  const base = {
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
   };
+
+  if (store) {
+    base.storeStatus = store.status;
+    if (store.status === 'rejected') {
+      base.storeRejectedReason = store.rejectedReason;
+    }
+  }
+
+  return base;
 }
 
 export async function register(req, res, next) {
@@ -30,7 +44,7 @@ export async function register(req, res, next) {
     const user = await db.User.create({ name, email, passwordHash, role: 'customer' });
     const token = signToken(user);
 
-    return res.status(201).json({ token, user: toPublicUser(user) });
+    return res.status(201).json({ token, user: await toPublicUser(user) });
   } catch (error) {
     return next(error);
   }
@@ -56,12 +70,16 @@ export async function login(req, res, next) {
 
     const token = signToken(user);
 
-    return res.json({ token, user: toPublicUser(user) });
+    return res.json({ token, user: await toPublicUser(user) });
   } catch (error) {
     return next(error);
   }
 }
 
-export function me(req, res) {
-  return res.json({ user: req.user });
+export async function me(req, res, next) {
+  try {
+    return res.json({ user: await toPublicUser(req.user) });
+  } catch (error) {
+    return next(error);
+  }
 }

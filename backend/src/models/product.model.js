@@ -1,5 +1,6 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
+import PriceHistory from './priceHistory.model.js';
 
 const Product = sequelize.define(
   'Product',
@@ -45,6 +46,20 @@ const Product = sequelize.define(
         key: 'id',
       },
     },
+    storeId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      field: 'store_id',
+      references: {
+        model: 'stores',
+        key: 'id',
+      },
+    },
+    originalPrice: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      field: 'original_price',
+    },
   },
   {
     tableName: 'products',
@@ -52,5 +67,17 @@ const Product = sequelize.define(
     timestamps: true,
   },
 );
+
+Product.addHook('afterUpdate', async (instance, options) => {
+  if (instance.changed('price')) {
+    await PriceHistory.create(
+      {
+        productId: instance.id,
+        price: instance.previous('price'),
+      },
+      { transaction: options?.transaction },
+    );
+  }
+});
 
 export default Product;

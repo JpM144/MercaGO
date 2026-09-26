@@ -10,10 +10,19 @@ export default function RequireAdmin({ children }) {
     return <Spinner label="Verificando sesión…" />;
   }
   if (!token) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    return <Navigate to="/admin/login" state={{ from: location.pathname }} replace />;
   }
-  if (user?.role !== 'admin') {
-    return <Navigate to="/" replace />;
+
+  const isSuperAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isApprovedStoreAdmin = user?.role === 'store_admin' && user?.storeStatus === 'approved';
+
+  if (!isSuperAdmin && !isApprovedStoreAdmin) {
+    return user?.role === 'store_admin' ? (
+      <Navigate to="/estado-tienda" replace />
+    ) : (
+      <Navigate to="/" replace />
+    );
   }
+
   return children;
 }

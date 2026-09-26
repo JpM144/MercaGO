@@ -8,6 +8,15 @@ export default function Header() {
   const { user, logout } = useAuth();
   const { totalCount } = useCart();
 
+  const isStoreAdmin = user?.role === 'store_admin';
+  const isSuperAdmin = user?.role === 'super_admin';
+  const isAdmin = user?.role === 'admin';
+  const storePanelTo = isSuperAdmin
+    ? '/super-admin'
+    : isStoreAdmin && user.storeStatus !== 'approved'
+      ? '/estado-tienda'
+      : '/admin';
+
   return (
     <header className="sticky top-0 z-10 border-b border-brand-900/40 bg-brand-950 text-white">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
@@ -19,14 +28,17 @@ export default function Header() {
         </Link>
         <nav className="flex items-center gap-4 text-sm">
           <Link to="/" className="text-brand-100 transition hover:text-white">
+            Tiendas
+          </Link>
+          <Link to="/catalogo" className="text-brand-100 transition hover:text-white">
             Catálogo
           </Link>
-          {user?.role === 'admin' && (
+          {(isSuperAdmin || isAdmin || isStoreAdmin) && (
             <Link
-              to="/admin"
+              to={storePanelTo}
               className="rounded-lg bg-brand-900/60 px-3 py-2 font-medium text-accent-300 transition hover:text-accent-200"
             >
-              Panel admin
+              {isSuperAdmin ? 'Super admin' : isAdmin ? 'Panel admin' : 'Mi tienda'}
             </Link>
           )}
           <Link

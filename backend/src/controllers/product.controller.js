@@ -1,9 +1,10 @@
-import { Op } from 'sequelize';
+import { Op, Sequelize } from 'sequelize';
 import db from '../models/index.js';
 import { slugify, uniqueSlug } from '../utils/slug.util.js';
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
+const NEW_DAYS = 14;
 
 const ORDER_BY = {
   price_asc: [['price', 'ASC']],
@@ -11,50 +12,111 @@ const ORDER_BY = {
   newest: [['createdAt', 'DESC']],
 };
 
-function toProductJson(product) {
+export function toProductJson(product) {
   const json = product.get ? product.get({ plain: true }) : { ...product };
-  return { ...json, price: Number(json.price) };
+  return {
+    ...json,
+    price: Number(json.price),
+    originalPrice: json.originalPrice == null ? null : Number(json.originalPrice),
+  };
+}
+
+export function toDetailJson(product) {
+  const base = toProductJson(product);
+  const createdAt = product.createdAt ?? product.created_at;
+  const ageMs = createdAt ? Date.now() - new Date(createdAt).getTime() : Infinity;
+  base.isNew = ageMs <= NEW_DAYS * 24 * 60 * 60 * 1000;
+  base.discountPercent =
+    base.originalPrice != null && base.originalPrice > base.price
+      ? Math.round(((base.originalPrice - base.price) / base.originalPrice) * 100)
+      : null;
+  return base;
+}
+
+export async function querySiteProducts({
+  category,
+  search,
+  sort,
+  page,
+  limit,
+  onSale,
+  storeSlug,
+  maxPrice,
+}) {
+  const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
+  const limitNum = Math.min(MAX_LIMIT, Math.max(1, Number.parseInt(limit, 10) || DEFAULT_LIMIT));
+
+  const where = {};
+  const storeWhere = { status: 'approved' };
+
+  if (onSale === 'true') {
+    where[Op.and] = Sequelize.where(Sequelize.col('original_price'), Op.gt, Sequelize.col('price'));
+  }
+
+  if (category) {
+    const cat = await db.Category.findOne({ where: { slug: category } });
+    if (!cat) {
+      return { rows: [], count: 0, pageNum, limitNum };
+    }
+    where.categoryId = cat.id;
+  }
+
+  if (search) {
+    where[Op.or] = [
+      { name: { [Op.iLike]: `%${search}%` } },
+      { description: { [Op.iLike]: `%${search}%` } },
+    ];
+  }
+
+  if (storeSlug) {
+    storeWhere.slug = storeSlug;
+  }
+
+  if (maxPrice !== undefined && maxPrice !== null) {
+    const priceNum = Number(maxPrice);
+    if (Number.isFinite(priceNum) && priceNum >= 0) {
+      where.price = { [Op.lte]: priceNum };
+    }
+  }
+
+  const order = ORDER_BY[sort] ?? ORDER_BY.newest;
+
+  const { rows, count } = await db.Product.findAndCountAll({
+    where,
+    order,
+    offset: (pageNum - 1) * limitNum,
+    limit: limitNum,
+    distinct: true,
+    include: [
+      {
+        model: db.Category,
+        as: 'category',
+        attributes: ['id', 'name', 'slug'],
+      },
+      {
+        model: db.Store,
+        as: 'store',
+        attributes: ['id', 'name', 'slug'],
+        where: storeWhere,
+      },
+    ],
+  });
+
+  return { rows, count, pageNum, limitNum };
 }
 
 export async function listProducts(req, res, next) {
   try {
-    const { category, search, sort, page, limit } = req.query;
+    const { category, search, sort, page, limit, onSale, store } = req.query;
 
-    const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
-    const limitNum = Math.min(MAX_LIMIT, Math.max(1, Number.parseInt(limit, 10) || DEFAULT_LIMIT));
-
-    const where = {};
-
-    if (category) {
-      const cat = await db.Category.findOne({ where: { slug: category } });
-      if (!cat) {
-        return res.json({ products: [], total: 0, page: pageNum, limit: limitNum, totalPages: 0 });
-      }
-      where.categoryId = cat.id;
-    }
-
-    if (search) {
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${search}%` } },
-        { description: { [Op.iLike]: `%${search}%` } },
-      ];
-    }
-
-    const order = ORDER_BY[sort] ?? ORDER_BY.newest;
-
-    const { rows, count } = await db.Product.findAndCountAll({
-      where,
-      order,
-      offset: (pageNum - 1) * limitNum,
-      limit: limitNum,
-      distinct: true,
-      include: [
-        {
-          model: db.Category,
-          as: 'category',
-          attributes: ['id', 'name', 'slug'],
-        },
-      ],
+    const { rows, count, pageNum, limitNum } = await querySiteProducts({
+      category,
+      search,
+      sort,
+      page,
+      limit,
+      onSale,
+      storeSlug: store,
     });
 
     return res.json({
@@ -79,6 +141,12 @@ export async function getProductBySlug(req, res, next) {
           as: 'category',
           attributes: ['id', 'name', 'slug'],
         },
+        {
+          model: db.Store,
+          as: 'store',
+          attributes: ['id', 'name', 'slug', 'whatsappNumber'],
+          where: { status: 'approved' },
+        },
       ],
     });
 
@@ -98,8 +166,21 @@ export async function getProductBySlug(req, res, next) {
       ? Math.round((reviews.reduce((sum, r) => sum + r.rating, 0) / ratingCount) * 10) / 10
       : null;
 
+    const priceHistory = await db.PriceHistory.findAll({
+      where: { productId: product.id },
+      attributes: ['id', 'price', 'changed_at'],
+      order: [['changed_at', 'DESC']],
+    });
+
     return res.json({
-      product: toProductJson(product),
+      product: {
+        ...toDetailJson(product),
+        priceHistory: priceHistory.map((entry) => ({
+          id: entry.id,
+          price: Number(entry.price),
+          changedAt: entry.getDataValue('changed_at'),
+        })),
+      },
       ratingAverage,
       ratingCount,
       reviews,
@@ -121,6 +202,8 @@ export async function createProduct(req, res, next) {
       imageUrl,
       category_id,
       categoryId,
+      original_price,
+      originalPrice,
     } = req.body ?? {};
 
     const catId = category_id ?? categoryId;
@@ -140,6 +223,22 @@ export async function createProduct(req, res, next) {
       return res.status(400).json({ error: 'categoryId es obligatorio.' });
     }
 
+    const originalRaw = original_price ?? originalPrice;
+    let originalPriceNum = null;
+    if (originalRaw !== undefined && originalRaw !== null) {
+      originalPriceNum = Number(originalRaw);
+      if (!Number.isFinite(originalPriceNum) || originalPriceNum < 0) {
+        return res
+          .status(400)
+          .json({ error: 'original_price debe ser un número mayor o igual a 0.' });
+      }
+      if (originalPriceNum <= priceNum) {
+        return res
+          .status(400)
+          .json({ error: 'original_price debe ser mayor que price para marcar una oferta.' });
+      }
+    }
+
     const category = await db.Category.findByPk(catId);
     if (!category) {
       return res.status(400).json({ error: 'La categoría indicada no existe.' });
@@ -157,9 +256,18 @@ export async function createProduct(req, res, next) {
       stock: stockNum,
       imageUrl: imageUrl ?? image_url ?? null,
       categoryId: catId,
+      storeId: req.store.id,
+      originalPrice: originalPriceNum,
     });
 
-    return res.status(201).json({ product: toProductJson(product) });
+    const created = await db.Product.findByPk(product.id, {
+      include: [
+        { model: db.Category, as: 'category', attributes: ['id', 'name', 'slug'] },
+        { model: db.Store, as: 'store', attributes: ['id', 'name', 'slug'] },
+      ],
+    });
+
+    return res.status(201).json({ product: toProductJson(created) });
   } catch (error) {
     return next(error);
   }
@@ -167,13 +275,21 @@ export async function createProduct(req, res, next) {
 
 export async function updateProduct(req, res, next) {
   try {
-    const product = await db.Product.findByPk(req.params.id);
-    if (!product) {
-      return res.status(404).json({ error: 'Producto no encontrado.' });
-    }
+    const product = req.product;
 
-    const { name, slug, description, price, stock, image_url, imageUrl, category_id, categoryId } =
-      req.body ?? {};
+    const {
+      name,
+      slug,
+      description,
+      price,
+      stock,
+      image_url,
+      imageUrl,
+      category_id,
+      categoryId,
+      original_price,
+      originalPrice,
+    } = req.body ?? {};
 
     const fields = {};
 
@@ -196,6 +312,25 @@ export async function updateProduct(req, res, next) {
       }
       fields.price = priceNum;
     }
+    if (original_price !== undefined || originalPrice !== undefined) {
+      const originalRaw = original_price ?? originalPrice;
+      const originalPriceNum =
+        originalRaw === null || originalRaw === '' ? null : Number(originalRaw);
+      if (originalPriceNum !== null) {
+        if (!Number.isFinite(originalPriceNum) || originalPriceNum < 0) {
+          return res
+            .status(400)
+            .json({ error: 'original_price debe ser un número mayor o igual a 0.' });
+        }
+        const priceNum = Number(price ?? product.price);
+        if (originalPriceNum <= priceNum) {
+          return res
+            .status(400)
+            .json({ error: 'original_price debe ser mayor que price para marcar una oferta.' });
+        }
+      }
+      fields.originalPrice = originalPriceNum;
+    }
     if (stock !== undefined) {
       const stockNum = Number(stock);
       if (!Number.isInteger(stockNum) || stockNum < 0) {
@@ -216,7 +351,15 @@ export async function updateProduct(req, res, next) {
     }
 
     await product.update(fields);
-    return res.json({ product: toProductJson(product) });
+
+    const updated = await db.Product.findByPk(product.id, {
+      include: [
+        { model: db.Category, as: 'category', attributes: ['id', 'name', 'slug'] },
+        { model: db.Store, as: 'store', attributes: ['id', 'name', 'slug'] },
+      ],
+    });
+
+    return res.json({ product: toProductJson(updated) });
   } catch (error) {
     return next(error);
   }
@@ -224,10 +367,7 @@ export async function updateProduct(req, res, next) {
 
 export async function deleteProduct(req, res, next) {
   try {
-    const product = await db.Product.findByPk(req.params.id);
-    if (!product) {
-      return res.status(404).json({ error: 'Producto no encontrado.' });
-    }
+    const product = req.product;
 
     try {
       await product.destroy();

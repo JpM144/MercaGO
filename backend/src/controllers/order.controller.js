@@ -9,7 +9,7 @@ const ALLOWED_TRANSITIONS = {
   cancelled: [],
 };
 
-const ORDER_INCLUDE = {
+export const ORDER_INCLUDE = {
   model: db.OrderItem,
   as: 'items',
   include: [
@@ -21,7 +21,7 @@ const ORDER_INCLUDE = {
   ],
 };
 
-function toOrderJson(order) {
+export function toOrderJson(order) {
   const json = order.get({ plain: true });
   return {
     ...json,

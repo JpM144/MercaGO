@@ -11,12 +11,22 @@ const Order = sequelize.define(
     },
     userId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       field: 'user_id',
       references: {
         model: 'users',
         key: 'id',
       },
+    },
+    customerName: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      field: 'customer_name',
+    },
+    customerContact: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      field: 'customer_contact',
     },
     status: {
       type: DataTypes.ENUM('pending', 'confirmed', 'shipped', 'cancelled'),

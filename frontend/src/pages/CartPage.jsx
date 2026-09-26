@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useCart } from '../context/CartContext.jsx';
 import { createOrder } from '../services/orders.js';
 import { formatPrice } from '../utils/format.js';
+import { productHref } from '../utils/links.js';
 
 export default function CartPage() {
   const { token, logout } = useAuth();
@@ -122,7 +123,7 @@ export default function CartPage() {
 
                 <div className="grid gap-1">
                   <Link
-                    to={`/products/${item.product.slug}`}
+                    to={productHref(item.product)}
                     className="font-medium text-ink-900 hover:text-brand-700"
                   >
                     {item.product.name}

@@ -48,3 +48,16 @@ export const getOrder = (token, id) => adminRequest(token, `/api/orders/${id}`);
 
 export const updateOrderStatus = (token, id, status) =>
   adminRequest(token, `/api/admin/orders/${id}/status`, { method: 'PUT', body: { status } });
+
+export const listAdminStores = (token) => adminRequest(token, '/api/admin/stores');
+
+export const updateStoreStatus = (token, id, status, rejectedReason = null) => {
+  const body = rejectedReason ? { status, rejectedReason } : { status };
+  return adminRequest(token, `/api/admin/stores/${id}/status`, { method: 'PUT', body });
+};
+
+export const sendSalesAssistantMessage = (token, messages) =>
+  adminRequest(token, '/api/store-admin/sales-assistant/chat', {
+    method: 'POST',
+    body: { messages },
+  });

@@ -6,6 +6,20 @@ import db from '../models/index.js';
 let productId;
 
 async function seedCatalog() {
+  const storeAdmin = await db.User.create({
+    name: 'Store Owner',
+    email: 'reviews-store@techstore.com',
+    passwordHash: await bcrypt.hash('secret123', 10),
+    role: 'store_admin',
+  });
+  const store = await db.Store.create({
+    name: 'Tienda Reseñas',
+    slug: 'tienda-resenas',
+    whatsappNumber: '+541111111111',
+    ownerUserId: storeAdmin.id,
+    status: 'approved',
+  });
+
   const categories = await db.Category.bulkCreate([{ name: 'Celulares', slug: 'celulares' }], {
     returning: true,
   });
@@ -17,6 +31,7 @@ async function seedCatalog() {
         price: 1000,
         stock: 10,
         categoryId: categories[0].id,
+        storeId: store.id,
       },
     ],
     { returning: true },
@@ -54,9 +69,25 @@ async function buyProductAs(token, status = 'confirmed', adminToken = null) {
   return { order: created.body.order, update: update.body.order };
 }
 
+async function registerGuestPurchase(status = 'confirmed') {
+  const product = await db.Product.findByPk(productId);
+  const order = await db.Order.create({
+    userId: null,
+    status,
+    total: Number(product.price),
+  });
+  await db.OrderItem.create({
+    orderId: order.id,
+    productId,
+    quantity: 1,
+    unitPrice: Number(product.price),
+  });
+  return order;
+}
+
 describe('Reviews API', () => {
   beforeEach(async () => {
-    await db.sequelize.query('TRUNCATE TABLE categories, users CASCADE;');
+    await db.sequelize.query('TRUNCATE TABLE categories, stores, users CASCADE;');
     await seedCatalog();
   });
 
@@ -179,5 +210,27 @@ describe('Reviews API', () => {
   test('listar reseñas de producto inexistente devuelve 404', async () => {
     const res = await request(app).get('/api/products/999999/reviews');
     expect(res.status).toBe(404);
+  });
+
+  test('un pedido sin user_id (venta a cliente sin cuenta) no puede reseñarse desde ninguna cuenta', async () => {
+    await registerGuestPurchase('confirmed');
+
+    const tokenA = await tokenFor('cliente-guest-a@techstore.com');
+    const resA = await request(app)
+      .post(`/api/products/${productId}/reviews`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ rating: 5, comment: 'Quiero aprovechar la venta' });
+    expect(resA.status).toBe(403);
+
+    const tokenB = await tokenFor('cliente-guest-b@techstore.com');
+    const resB = await request(app)
+      .post(`/api/products/${productId}/reviews`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({ rating: 4 });
+    expect(resB.status).toBe(403);
+
+    const reviews = await request(app).get(`/api/products/${productId}/reviews`);
+    expect(reviews.status).toBe(200);
+    expect(reviews.body.ratingCount).toBe(0);
   });
 });

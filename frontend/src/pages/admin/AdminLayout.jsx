@@ -5,6 +5,7 @@ const LINKS = [
   { to: '/admin/products', label: 'Productos' },
   { to: '/admin/categories', label: 'Categorías' },
   { to: '/admin/orders', label: 'Pedidos' },
+  { to: '/admin/sales-assistant', label: 'Asistente de ventas' },
 ];
 
 export default function AdminLayout() {
