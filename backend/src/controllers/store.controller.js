@@ -3,6 +3,7 @@ import { Op } from 'sequelize';
 import db from '../models/index.js';
 import { slugify, uniqueSlug } from '../utils/slug.util.js';
 import { toDetailJson, querySiteProducts } from './product.controller.js';
+import { sendStoreApplicationNotice, sendStoreStatusNotice } from '../services/mailer.js';
 
 const SALT_ROUNDS = 10;
 const PASSWORD_MIN = 6;
@@ -103,6 +104,15 @@ export async function applyForStore(req, res, next) {
       );
       return { user, store };
     });
+
+    try {
+      await sendStoreApplicationNotice({ store: result.store, owner: result.user });
+    } catch (mailError) {
+      console.error(
+        '[mailer] No se pudo notificar la nueva solicitud de tienda:',
+        mailError.message,
+      );
+    }
 
     return res.status(201).json({
       message:
@@ -347,6 +357,25 @@ export async function updateStoreStatus(req, res, next) {
       status: nextStatus,
       rejectedReason: nextStatus === 'rejected' ? rejectedReason : null,
     });
+
+    const owner = await db.User.findByPk(store.ownerUserId, {
+      attributes: ['id', 'name', 'email'],
+    });
+    if (owner) {
+      try {
+        await sendStoreStatusNotice({
+          store,
+          owner,
+          status: store.status,
+          reason: store.rejectedReason,
+        });
+      } catch (mailError) {
+        console.error(
+          '[mailer] No se pudo notificar el cambio de estado de la tienda:',
+          mailError.message,
+        );
+      }
+    }
 
     return res.json({ store });
   } catch (error) {
