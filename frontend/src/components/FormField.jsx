@@ -5,6 +5,7 @@ export default function FormField({
   value,
   onChange,
   error,
+  hint,
   placeholder,
   autoComplete,
 }) {
@@ -22,6 +23,7 @@ export default function FormField({
         autoComplete={autoComplete}
         className="w-full rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
       />
+      {hint && <p className="text-xs text-ink-400">{hint}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );

@@ -7,6 +7,7 @@ import {
   deleteProduct,
 } from '../controllers/product.controller.js';
 import { listProductReviews, createReview } from '../controllers/review.controller.js';
+import { handleReviewPhotoUpload } from '../middleware/upload.middleware.js';
 import {
   requireApprovedStore,
   requireAuth,
@@ -19,7 +20,7 @@ const router = Router();
 router.get('/', listProducts);
 router.get('/:slug', getProductBySlug);
 router.get('/:id/reviews', listProductReviews);
-router.post('/:id/reviews', requireAuth, createReview);
+router.post('/:id/reviews', requireAuth, handleReviewPhotoUpload, createReview);
 router.post('/', requireStoreAdmin, requireApprovedStore, createProduct);
 router.put('/:id', requireStoreAdmin, requireApprovedStore, requireOwnedProduct, updateProduct);
 router.delete('/:id', requireStoreAdmin, requireApprovedStore, requireOwnedProduct, deleteProduct);

@@ -24,10 +24,10 @@ export default function RegisterPage() {
     event.preventDefault();
     const nextErrors = {};
     if (!name.trim()) {
-      nextErrors.name = 'Ingresá tu nombre.';
+      nextErrors.name = 'Ingresa tu nombre.';
     }
     if (!EMAIL_PATTERN.test(email.trim())) {
-      nextErrors.email = 'Ingresá un email válido.';
+      nextErrors.email = 'Ingresa un email válido.';
     }
     if (password.length < 8) {
       nextErrors.password = 'La contraseña debe tener al menos 8 caracteres.';
@@ -54,7 +54,7 @@ export default function RegisterPage() {
     <div className="mx-auto grid w-full max-w-md gap-6 py-8">
       <div className="grid gap-2 text-center">
         <h1 className="text-3xl font-bold tracking-tight text-ink-900">Crear cuenta</h1>
-        <p className="text-ink-500">Registrate y empezá a comprar.</p>
+        <p className="text-ink-500">Regístrate y empieza a comprar.</p>
       </div>
 
       <form
@@ -98,7 +98,7 @@ export default function RegisterPage() {
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
           error={errors.confirmPassword}
-          placeholder="Repetí tu contraseña"
+          placeholder="Repite tu contraseña"
           autoComplete="new-password"
         />
 
@@ -116,9 +116,9 @@ export default function RegisterPage() {
       </form>
 
       <p className="text-center text-sm text-ink-600">
-        ¿Ya tenés cuenta?{' '}
+        ¿Ya tienes cuenta?{' '}
         <Link to="/login" className="font-medium text-brand-700 hover:text-brand-800">
-          Ingresá
+          Ingresar
         </Link>
       </p>
     </div>

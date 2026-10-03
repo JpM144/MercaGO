@@ -1,4 +1,5 @@
 import { formatDate } from '../utils/format.js';
+import { API_URL } from '../services/api.js';
 
 function Stars({ rating }) {
   const filled = Math.round(Math.min(5, Math.max(0, rating ?? 0)));
@@ -40,6 +41,13 @@ export default function ReviewList({ reviews = [] }) {
             <p className="text-ink-700">{review.comment}</p>
           ) : (
             <p className="text-sm italic text-ink-400">Sin comentario.</p>
+          )}
+          {review.photoUrl && (
+            <img
+              src={`${API_URL}${review.photoUrl}`}
+              alt={`Foto de la reseña de ${review.user?.name ?? 'usuario'}`}
+              className="mt-1 max-h-64 w-full rounded-lg border border-ink-200 object-cover"
+            />
           )}
         </li>
       ))}

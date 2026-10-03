@@ -1,7 +1,6 @@
-import { Op } from 'sequelize';
 import db from '../models/index.js';
 
-const REVIEW_FIELDS = ['id', 'rating', 'comment', 'created_at'];
+const REVIEW_FIELDS = ['id', 'rating', 'comment', 'photoUrl', 'created_at'];
 
 function reviewAverage(reviews) {
   return reviews.length
@@ -60,24 +59,9 @@ export async function createReview(req, res, next) {
       return res.status(409).json({ error: 'Ya reseñaste este producto.' });
     }
 
-    const purchased = await db.OrderItem.findOne({
-      where: { productId },
-      include: [
-        {
-          model: db.Order,
-          as: 'order',
-          attributes: ['id'],
-          where: {
-            userId: req.user.id,
-            status: { [Op.notIn]: ['pending', 'cancelled'] },
-          },
-        },
-      ],
-    });
-
-    if (!purchased) {
-      return res.status(403).json({
-        error: 'Solo podés reseñar productos que hayas comprado (con pedido confirmado o enviado).',
+    if (!req.file) {
+      return res.status(400).json({
+        error: 'La foto del producto es obligatoria (JPG, PNG o WebP, máx. 5 MB).',
       });
     }
 
@@ -86,6 +70,7 @@ export async function createReview(req, res, next) {
       userId: req.user.id,
       rating: ratingNum,
       comment: comment ?? null,
+      photoUrl: `/uploads/reviews/${req.file.filename}`,
     });
 
     const created = await db.Review.findByPk(review.id, {

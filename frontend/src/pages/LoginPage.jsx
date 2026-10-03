@@ -46,10 +46,10 @@ export default function LoginPage({ variant = 'customer' }) {
     event.preventDefault();
     const nextErrors = {};
     if (!EMAIL_PATTERN.test(email.trim())) {
-      nextErrors.email = 'Ingresá un email válido.';
+      nextErrors.email = 'Ingresa un email válido.';
     }
     if (!password) {
-      nextErrors.password = 'Ingresá tu contraseña.';
+      nextErrors.password = 'Ingresa tu contraseña.';
     }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
@@ -117,27 +117,27 @@ export default function LoginPage({ variant = 'customer' }) {
           <p>
             {copy.cta}{' '}
             <Link to="/register" className="font-medium text-brand-700 hover:text-brand-800">
-              Creá una gratis
+              Crea una gratis
             </Link>
           </p>
         )}
         <p>
-          {variant === 'admin' ? '¿Buscás el ingreso de clientes?' : '¿Tenés una tienda?'}{' '}
+          {variant === 'admin' ? '¿Buscas el ingreso de clientes?' : '¿Tienes una tienda?'}{' '}
           {variant === 'admin' ? (
             <Link to="/login" className="font-medium text-brand-700 hover:text-brand-800">
-              Ingresá como cliente
+              Ingresa como cliente
             </Link>
           ) : (
             <Link to="/admin/login" className="font-medium text-brand-700 hover:text-brand-800">
-              Ingresá al panel de administración
+              Ingresa al panel de administración
             </Link>
           )}
         </p>
         {variant !== 'admin' && (
           <p>
-            ¿Querés vender en la plataforma?{' '}
+            ¿Quieres vender en la plataforma?{' '}
             <Link to="/registrar" className="font-medium text-brand-700 hover:text-brand-800">
-              Registrá tu tienda
+              Registra tu tienda
             </Link>
           </p>
         )}

@@ -60,8 +60,8 @@ async function seedCatalog() {
 
   const categories = await db.Category.bulkCreate(
     [
-      { name: 'Audio', slug: 'audio' },
-      { name: 'Accesorios', slug: 'accesorios' },
+      { name: 'Audio', slug: 'audio', storeId: storeOne.id },
+      { name: 'Accesorios', slug: 'accesorios', storeId: storeOne.id },
     ],
     { returning: true },
   );

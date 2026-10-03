@@ -39,6 +39,11 @@ const Review = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    photoUrl: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      field: 'photo_url',
+    },
   },
   {
     tableName: 'reviews',

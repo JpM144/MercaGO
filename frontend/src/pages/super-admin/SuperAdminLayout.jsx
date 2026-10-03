@@ -1,7 +1,12 @@
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 
-const LINKS = [{ to: '/super-admin/stores', label: 'Solicitudes de tienda' }];
+const LINKS = [
+  { to: '/super-admin/stores', label: 'Tiendas' },
+  { to: '/super-admin/aplicaciones', label: 'Solicitudes' },
+  { to: '/super-admin/plan-changes', label: 'Cambios de plan' },
+  { to: '/super-admin/audit', label: 'Auditoría' },
+];
 
 export default function SuperAdminLayout() {
   const { user } = useAuth();

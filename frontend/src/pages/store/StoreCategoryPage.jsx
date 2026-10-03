@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useStore } from '../../context/StoreContext.jsx';
-import { fetchStoreProducts } from '../../services/stores.js';
-import { fetchCategories } from '../../services/products.js';
+import { fetchStoreCategories, fetchStoreProducts } from '../../services/stores.js';
 import ProductGrid from '../../components/ProductGrid.jsx';
 import Paginator from '../../components/Paginator.jsx';
 import Spinner from '../../components/Spinner.jsx';
@@ -25,10 +24,11 @@ export default function StoreCategoryPage() {
   const [state, setState] = useState({ loading: true, data: null, error: null });
 
   useEffect(() => {
-    fetchCategories()
+    // Las categorías son privadas: el título se resuelve con el catálogo de esta tienda.
+    fetchStoreCategories(store.slug)
       .then((res) => setAllCategories(res.categories ?? []))
       .catch(() => {});
-  }, []);
+  }, [store.slug]);
 
   const load = useCallback(async () => {
     setState({ loading: true, data: null, error: null });

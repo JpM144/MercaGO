@@ -10,12 +10,12 @@ export function slugify(value) {
     .replace(/^-+|-+$/g, '');
 }
 
-export async function uniqueSlug(model, base, { excludeId } = {}) {
+export async function uniqueSlug(model, base, { excludeId, where: scope } = {}) {
   const root = base || 'item';
   let candidate = root;
   let i = 2;
 
-  const where = { slug: candidate };
+  const where = { ...scope, slug: candidate };
   if (excludeId !== undefined) {
     where.id = { [Op.ne]: excludeId };
   }

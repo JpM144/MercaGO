@@ -69,14 +69,21 @@ function buildSystemPrompt(store, products) {
 
   return [
     `Sos el asistente de ventas por WhatsApp de la tienda "${store.name}" de TechStore.`,
-    'El vendedor (store_admin) te describe por chat qué vendió. Interpretás esa descripción y, cuando tengas toda la información, registrás la venta llamando a la herramienta register_sale.',
+    'El vendedor (store_admin) te describe por chat qué vendió. Vos armás el pedido, pero NUNCA lo registrás sin su confirmación explícita.',
+    '',
+    'FLUJO OBLIGATORIO EN DOS PASOS:',
+    '1) PRIMER TURNO, SOLO PROPUESTA (texto plano, sin herramientas): cuando ya tengas toda la información (productos, cantidades y cliente si lo dio), NO llames a register_sale. Respondé en texto plano con un resumen claro: cada producto con su cantidad y su precio, el total, y el cliente si lo mencionó. Terminá SIEMPRE con una pregunta de confirmación explícita (ej.: "¿Confirmás que aplique el descuento de stock?").',
+    '2) SEGUNDO TURNO, EJECUCIÓN: solo si el vendedor responde afirmativamente a tu resumen ("sí", "confirmo", "dale", "adelante", "dale, confirmo"), llamás a register_sale con EXACTAMENTE los mismos datos que mostraste en el resumen.',
     '',
     'REGLAS ESTRICTAS:',
+    '- NUNCA llames a register_sale en el mismo turno en que el vendedor describe o resumís la venta: la primera respuesta es siempre de texto.',
+    '- NUNCA ejecutes una venta si el vendedor corrige el resumen, cambia una cantidad o un producto, o dice que no: en ese caso no llames a ninguna herramienta y pedile los datos correctos de nuevo.',
+    '- No registres dos veces el mismo pedido: si ya lo registraste, confirmá que quedó hecho sin volver a llamar la herramienta.',
     '- Solo podés vender productos del catálogo de esta tienda que se detalla abajo. NUNCA inventes productos ni precios.',
     '- Si un producto no existe en el catálogo o su nombre es ambiguo, NO registres la venta: pedí al vendedor que lo confirme o lo corrija y esperá su respuesta.',
     '- Preguntá la cantidad si no está clara y no la asumas.',
     '- customer_name y customer_contact son opcionales: usalos solo si el vendedor los brindó.',
-    '- Cuando la venta se registre, confirmá el pedido al vendedor de forma breve.',
+    '- Cuando la venta quede registrada, confirmá al vendedor con el número de pedido y el total.',
     '',
     `Catálogo actual de ${store.name}:`,
     lines,
@@ -131,7 +138,7 @@ async function handleRegisterSale(args, storeId) {
 
   const catalog = await db.Product.findAll({
     where: { storeId },
-    attributes: ['id', 'name', 'price', 'stock'],
+    attributes: ['id', 'name', 'price', 'cost', 'stock'],
     order: [['id', 'ASC']],
   });
 
@@ -196,7 +203,7 @@ async function handleRegisterSale(args, storeId) {
         const product = await db.Product.findByPk(r.product.id, {
           transaction: t,
           lock: t.LOCK.UPDATE,
-          attributes: ['id', 'name', 'price', 'stock'],
+          attributes: ['id', 'name', 'price', 'cost', 'stock'],
         });
         if (!product || product.stock < r.quantity) {
           throw new Error(`Stock insuficiente para "${r.product.name}".`);
@@ -220,6 +227,7 @@ async function handleRegisterSale(args, storeId) {
           productId: r.product.id,
           quantity: r.quantity,
           unitPrice: r.product.price,
+          unitCost: r.product.cost,
         })),
         { transaction: t },
       );
@@ -271,6 +279,107 @@ async function handleRegisterSale(args, storeId) {
   };
 }
 
+const AFFIRMATIVE_TOKENS = new Set([
+  'si',
+  'dale',
+  'dales',
+  'adelante',
+  'confirmo',
+  'confirma',
+  'confirmado',
+  'confirmada',
+  'ok',
+  'okey',
+  'va',
+  'hecho',
+  'listo',
+  'lista',
+  'aplica',
+  'aplicar',
+  'aplicalo',
+  'procede',
+  'autorizo',
+  'autorizado',
+  'autorizada',
+  'correcto',
+  'correcta',
+  'exacto',
+  'exacta',
+  'perfecto',
+  'perfecta',
+  'yes',
+  'yep',
+]);
+
+const DENIAL_TOKENS = new Set([
+  'no',
+  'nel',
+  'nunca',
+  'nada',
+  'cancela',
+  'cancelalo',
+  'cancelar',
+  'deja',
+  'dejalo',
+  'para',
+  'espera',
+  'esperalo',
+  'todavia',
+  'incorrecto',
+  'incorrecta',
+  'mal',
+  'nah',
+  'nope',
+  'blur',
+]);
+
+const CORRECTION_TOKENS = new Set([
+  'pero',
+  'realmente',
+  'mejor',
+  'cambia',
+  'cambiar',
+  'cambio',
+  'corrijo',
+  'corregi',
+  'error',
+  'equivoco',
+  'equivoque',
+  'quito',
+  'quita',
+  'reemplaza',
+  'saco',
+]);
+
+function normalizeForMatch(text) {
+  return String(text ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[¿?¡!.,;:"']/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+export function isExplicitConfirmation(text) {
+  const tokens = normalizeForMatch(text);
+  if (tokens.length === 0) return false;
+  if (tokens.some((token) => DENIAL_TOKENS.has(token))) return false;
+  if (tokens.some((token) => CORRECTION_TOKENS.has(token))) return false;
+  return tokens.some((token) => AFFIRMATIVE_TOKENS.has(token));
+}
+
+function hasProposalBeforeLastUser(messages) {
+  const lastUserIndex = messages.map((m) => m?.role).lastIndexOf('user');
+  if (lastUserIndex <= 0) return false;
+  return messages
+    .slice(0, lastUserIndex)
+    .some(
+      (m) =>
+        m?.role === 'assistant' && typeof m.content === 'string' && m.content.trim().length > 0,
+    );
+}
+
 export async function salesAssistantChat(req, res, next) {
   try {
     const messages = req.body?.messages;
@@ -292,6 +401,15 @@ export async function salesAssistantChat(req, res, next) {
         .filter((m) => m && typeof m === 'object' && typeof m.role === 'string')
         .map((m) => ({ role: m.role, content: m.content ?? '' })),
     ];
+
+    const lastUserMessage = [...messages].reverse().find((m) => m?.role === 'user');
+    const confirmationGiven =
+      hasProposalBeforeLastUser(messages) && isExplicitConfirmation(lastUserMessage?.content);
+    if (!confirmationGiven) {
+      console.log(
+        '[sales-assistant] register_sale bloqueado: sin confirmación explícita del store_admin en este turno.',
+      );
+    }
 
     const client = getAgentClient();
     let createdOrder = null;
@@ -341,6 +459,39 @@ export async function salesAssistantChat(req, res, next) {
         } catch {
           args = { parseError: true };
         }
+
+        if (!confirmationGiven) {
+          convo.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify({
+              success: false,
+              order: null,
+              errors: [
+                'No se registró nada: falta la confirmación explícita del vendedor para este resumen.',
+              ],
+              message: 'Falta la confirmación explícita del vendedor: no se ejecutó ningún cambio.',
+              hint: 'Mostrale el resumen al vendedor en texto plano y pedile confirmación ("¿Confirmás que aplique el descuento de stock?"). Solo si responde afirmativamente en un mensaje siguiente, llamá register_sale.',
+            }),
+          });
+          continue;
+        }
+
+        if (createdOrder) {
+          convo.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify({
+              success: false,
+              order: null,
+              errors: ['Esta venta ya quedó registrada en este mismo turno.'],
+              message: 'No se registró de nuevo: la venta ya estaba registrada.',
+              hint: 'No dupliques el pedido. Confirmá al vendedor el número de pedido.',
+            }),
+          });
+          continue;
+        }
+
         const outcome = await handleRegisterSale(args, req.store.id);
         if (outcome.success) {
           createdOrder = outcome.orderInstance;

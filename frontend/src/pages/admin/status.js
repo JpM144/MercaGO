@@ -7,10 +7,3 @@ export const STATUS_BADGES = {
     'inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800',
   cancelled: 'inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700',
 };
-
-export const ORDER_TRANSITIONS = {
-  pending: ['confirmed', 'cancelled'],
-  confirmed: ['shipped', 'cancelled'],
-  shipped: [],
-  cancelled: [],
-};

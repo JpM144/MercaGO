@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { postReview } from '../services/products.js';
 import { useAuth } from '../context/AuthContext.jsx';
+
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
 
 function StarPicker({ value, onChange }) {
   return (
@@ -28,17 +31,16 @@ export default function ReviewForm({ productId, alreadyReviewed, onReviewCreated
   const { token } = useAuth();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [photo, setPhoto] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [blocked, setBlocked] = useState('');
 
-  if (blocked) {
-    return (
-      <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        {blocked}
-      </p>
-    );
-  }
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   if (alreadyReviewed || error === 'Ya reseñaste este producto.') {
     return (
@@ -48,10 +50,38 @@ export default function ReviewForm({ productId, alreadyReviewed, onReviewCreated
     );
   }
 
+  const handlePhotoChange = (event) => {
+    const file = event.target.files?.[0] ?? null;
+    setError('');
+    if (!file) {
+      setPhoto(null);
+      setPreviewUrl(null);
+      return;
+    }
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setError('La foto debe ser JPG, PNG o WebP.');
+      setPhoto(null);
+      setPreviewUrl(null);
+      return;
+    }
+    if (file.size > MAX_PHOTO_SIZE) {
+      setError('La foto no puede superar los 5 MB.');
+      setPhoto(null);
+      setPreviewUrl(null);
+      return;
+    }
+    setPhoto(file);
+    setPreviewUrl(URL.createObjectURL(file));
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (rating === 0) {
       setError('Elegí un rating entre 1 y 5 estrellas.');
+      return;
+    }
+    if (!photo) {
+      setError('La foto del producto es obligatoria.');
       return;
     }
 
@@ -63,17 +93,17 @@ export default function ReviewForm({ productId, alreadyReviewed, onReviewCreated
         productId,
         rating,
         comment: comment.trim() || undefined,
+        photo,
       });
       onReviewCreated(review);
       setRating(0);
       setComment('');
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPhoto(null);
+      setPreviewUrl(null);
     } catch (submitError) {
-      if (submitError.status === 403) {
-        setBlocked(
-          'Solo podés dejar una reseña si compraste este producto con un pedido confirmado o enviado.',
-        );
-      } else if (submitError.status === 409) {
-        setError(submitError.message);
+      if (submitError.status === 401 || submitError.status === 403) {
+        setError('Necesitás iniciar sesión para dejar una reseña.');
       } else {
         setError(submitError.message);
       }
@@ -107,6 +137,27 @@ export default function ReviewForm({ productId, alreadyReviewed, onReviewCreated
           placeholder="Contanos tu experiencia con este producto…"
           className="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
         />
+      </div>
+
+      <div className="grid gap-1.5">
+        <label htmlFor="review-photo" className="text-sm font-medium text-ink-700">
+          Foto del producto (obligatoria)
+        </label>
+        <input
+          id="review-photo"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={handlePhotoChange}
+          className="block w-full cursor-pointer rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-700 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-brand-700 hover:file:bg-brand-100"
+        />
+        <p className="text-xs text-ink-400">Formatos JPG, PNG o WebP. Tamaño máximo 5 MB.</p>
+        {previewUrl && (
+          <img
+            src={previewUrl}
+            alt="Vista previa de la foto de tu reseña"
+            className="mt-1 max-h-52 w-fit rounded-lg border border-ink-200 object-cover"
+          />
+        )}
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}

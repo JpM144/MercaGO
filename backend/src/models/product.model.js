@@ -27,6 +27,11 @@ const Product = sequelize.define(
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
     },
+    cost: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
     stock: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -59,6 +64,12 @@ const Product = sequelize.define(
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
       field: 'original_price',
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      field: 'is_active',
     },
   },
   {

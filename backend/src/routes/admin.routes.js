@@ -1,7 +1,11 @@
 import { Router } from 'express';
-import { requireAuth, requireAdmin, requireSuperAdmin } from '../middleware/auth.middleware.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.middleware.js';
 import { listAllOrders, updateOrderStatus } from '../controllers/order.controller.js';
-import { listStores, updateStoreStatus } from '../controllers/store.controller.js';
+import {
+  listStoreApplications,
+  approveApplication,
+  rejectApplication,
+} from '../controllers/storeApplication.controller.js';
 
 const router = Router();
 
@@ -13,8 +17,9 @@ router.get('/stats', requireAuth, requireAdmin, (_req, res) => {
 router.get('/orders', requireAuth, requireAdmin, listAllOrders);
 router.put('/orders/:id/status', requireAuth, requireAdmin, updateOrderStatus);
 
-// Gestión de tiendas: solo super_admin aprueba/rechaza.
-router.get('/stores', requireSuperAdmin, listStores);
-router.put('/stores/:id/status', requireSuperAdmin, updateStoreStatus);
+// Gestión de solicitudes de tienda: admin/super_admin revisa y aprueba o rechaza.
+router.get('/store-applications', requireAuth, requireAdmin, listStoreApplications);
+router.put('/store-applications/:id/approve', requireAuth, requireAdmin, approveApplication);
+router.put('/store-applications/:id/reject', requireAuth, requireAdmin, rejectApplication);
 
 export default router;

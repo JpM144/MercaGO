@@ -37,6 +37,12 @@ const OrderItem = sequelize.define(
       allowNull: false,
       field: 'unit_price',
     },
+    unitCost: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      field: 'unit_cost',
+      defaultValue: 0,
+    },
   },
   {
     tableName: 'order_items',

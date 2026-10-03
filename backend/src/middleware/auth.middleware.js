@@ -1,4 +1,5 @@
 import { verifyToken } from '../utils/token.util.js';
+import { getEffectivePlanStatus } from '../utils/plan.util.js';
 import db from '../models/index.js';
 
 const PUBLIC_FIELDS = ['id', 'name', 'email', 'role'];
@@ -63,7 +64,17 @@ export function requireStoreAdmin(req, res, next) {
     try {
       const store = await db.Store.findOne({
         where: { ownerUserId: req.user.id },
-        attributes: ['id', 'name', 'slug', 'status', 'ownerUserId'],
+        attributes: [
+          'id',
+          'name',
+          'slug',
+          'status',
+          'ownerUserId',
+          'planStatus',
+          'planStartedAt',
+          'planExpiresAt',
+          'planTierId',
+        ],
       });
       if (!store) {
         return res.status(403).json({ error: 'No tenés una tienda asociada para administrar.' });
@@ -76,12 +87,23 @@ export function requireStoreAdmin(req, res, next) {
   });
 }
 
+const PLAN_BLOCKED_MESSAGES = {
+  paused: 'Tu tienda está pausada. Esperá a que un super admin la reactive para continuar.',
+  expired: 'Tu plan venció. Renová tu plan para seguir administrando tu tienda.',
+  cancelled: 'Tu tienda fue cancelada.',
+};
+
 export function requireApprovedStore(req, res, next) {
   if (req.store?.status !== 'approved') {
     return res.status(403).json({
       error:
         'Tu tienda no está aprobada: no podés administrar productos hasta que un super admin la apruebe.',
     });
+  }
+
+  const { status } = getEffectivePlanStatus(req.store);
+  if (status !== 'active') {
+    return res.status(403).json({ error: PLAN_BLOCKED_MESSAGES[status] });
   }
   return next();
 }

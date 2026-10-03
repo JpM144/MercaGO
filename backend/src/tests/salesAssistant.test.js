@@ -70,8 +70,8 @@ async function seedCatalog() {
 
   const categories = await db.Category.bulkCreate(
     [
-      { name: 'Celulares', slug: 'celulares' },
-      { name: 'Accesorios', slug: 'accesorios' },
+      { name: 'Celulares', slug: 'celulares', storeId: storeOne.id },
+      { name: 'Accesorios', slug: 'accesorios', storeId: storeOne.id },
     ],
     { returning: true },
   );
@@ -79,10 +79,10 @@ async function seedCatalog() {
 
   [iphone, cableOne, cableTwo, audifonos] = await db.Product.bulkCreate(
     [
-      { name: 'iPhone 15', slug: 'iphone-15', price: 1000, stock: 5, categoryId: celulares.id, storeId: storeOne.id },
-      { name: 'Cable Tipo C', slug: 'cable-tipo-c', price: 15, stock: 10, categoryId: accesorios.id, storeId: storeOne.id },
+      { name: 'iPhone 15', slug: 'iphone-15', price: 1000, cost: 700, stock: 5, categoryId: celulares.id, storeId: storeOne.id },
+      { name: 'Cable Tipo C', slug: 'cable-tipo-c', price: 15, cost: 10, stock: 10, categoryId: accesorios.id, storeId: storeOne.id },
       { name: 'Cable Tipo C', slug: 'cable-tipo-c-2', price: 18, stock: 7, categoryId: accesorios.id, storeId: storeOne.id },
-      { name: 'Audifonos', slug: 'audifonos', price: 80, stock: 2, categoryId: accesorios.id, storeId: storeOne.id },
+      { name: 'Audifonos', slug: 'audifonos', price: 80, cost: 50, stock: 2, categoryId: accesorios.id, storeId: storeOne.id },
     ],
     { returning: true },
   );
@@ -117,6 +117,8 @@ function finalMessage(content) {
   return { choices: [{ message: { role: 'assistant', content, tool_calls: null } }] };
 }
 
+let currentCreate = null;
+
 function scriptClient(script) {
   const queue = [...script];
   const wrapped = async () => {
@@ -125,6 +127,7 @@ function scriptClient(script) {
   };
   wrapped.calls = 0;
   __setClientFactoryForTests(() => ({ chat: { completions: { create: wrapped } } }));
+  currentCreate = wrapped;
   return wrapped;
 }
 
@@ -137,6 +140,37 @@ async function chat(token, content) {
     console.log('CHAT 500:', JSON.stringify(res.body));
   }
   return res;
+}
+
+async function chatHistory(token, messages) {
+  const res = await request(app)
+    .post('/api/store-admin/sales-assistant/chat')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ messages });
+  if (res.status >= 500) {
+    console.log('CHAT 500:', JSON.stringify(res.body));
+  }
+  return res;
+}
+
+const PROPOSAL =
+  'Resumen de la venta: 2 x iPhone 15 (US$1.000 c/u) y 1 x Cable Tipo C (US$15). Total US$2.015. Cliente: Juan Perez (cliente-vinculado@techstore.com). ¿Confirmás que aplique el descuento de stock?';
+
+async function proposeAndConfirm(token, originalMessage, confirmation = 'Sí, confirmo, dale') {
+  const first = await chat(token, originalMessage);
+  const afterFirst = {
+    calls: currentCreate ? currentCreate.calls : 0,
+    orders: await orderCount(),
+    stockIphone: await stockOf(iphone),
+    stockCableOne: await stockOf(cableOne),
+    stockAudifonos: await stockOf(audifonos),
+  };
+  const second = await chatHistory(token, [
+    { role: 'user', content: originalMessage },
+    { role: 'assistant', content: first.body.reply },
+    { role: 'user', content: confirmation },
+  ]);
+  return { first, afterFirst, second };
 }
 
 async function orderCount() {
@@ -158,9 +192,10 @@ afterAll(async () => {
   await db.sequelize.close();
 });
 
-test('venta simple exitosa: registra pedido confirmed, descuenta stock y vincula el contacto con un usuario existente', async () => {
+test('venta en dos turnos: el turno 1 propone sin tool call y el turno 2 con confirmación registra el pedido, descuenta stock y vincula el contacto', async () => {
   const token = await tokenFor('sa-uno@techstore.com');
   const create = scriptClient([
+    finalMessage(PROPOSAL),
     toolCallMessage('register_sale', {
       items: [
         { product_name_or_id: 'iPhone 15', quantity: 2 },
@@ -172,8 +207,19 @@ test('venta simple exitosa: registra pedido confirmed, descuenta stock y vincula
     finalMessage('Listo, registré la venta.'),
   ]);
 
-  const res = await chat(token, 'Vendí 2 iphone 15 y 1 cable de la tienda a Juan, su email es cliente-vinculado@techstore.com');
+  const original = 'Vendí 2 iphone 15 y 1 cable de la tienda a Juan, su email es cliente-vinculado@techstore.com';
+  const { first, afterFirst, second: res } = await proposeAndConfirm(token, original);
 
+  // Turno 1: propuesta en texto, sin ejecutar nada.
+  expect(first.status).toBe(200);
+  expect(first.body.order).toBeNull();
+  expect(first.body.reply).toContain('¿Confirmás');
+  expect(afterFirst.calls).toBe(1);
+  expect(afterFirst.orders).toBe(0);
+  expect(afterFirst.stockIphone).toBe(5);
+  expect(afterFirst.stockCableOne).toBe(10);
+
+  // Turno 2: confirmation explícita -> recién ahí se ejecuta.
   expect(res.status).toBe(200);
   expect(res.body.reply).toBe('Listo, registré la venta.');
   expect(res.body.order).not.toBeNull();
@@ -183,7 +229,7 @@ test('venta simple exitosa: registra pedido confirmed, descuenta stock y vincula
   expect(res.body.order.customerContact).toBe('cliente-vinculado@techstore.com');
   expect(res.body.order.userId).toBe(customer.id);
   expect(res.body.order.items).toHaveLength(2);
-  expect(create.calls).toBe(2);
+  expect(create.calls).toBe(3);
 
   expect(await orderCount()).toBe(1);
   expect(await stockOf(iphone)).toBe(3);
@@ -196,11 +242,21 @@ test('venta simple exitosa: registra pedido confirmed, descuenta stock y vincula
   expect(stored.status).toBe('confirmed');
   expect(stored.userId).toBe(customer.id);
   expect(stored.customerName).toBe('Juan Perez');
+
+  const iphoneItem = stored.items.find((item) => item.productId === iphone.id);
+  const cableItem = stored.items.find((item) => item.productId === cableOne.id);
+  expect(Number(iphoneItem.unitPrice)).toBe(1000);
+  expect(Number(iphoneItem.unitCost)).toBe(700);
+  expect(Number(cableItem.unitPrice)).toBe(15);
+  expect(Number(cableItem.unitCost)).toBe(10);
 });
 
 test('contacto sin cuenta existente: guarda datos sueltos con user_id null', async () => {
   const token = await tokenFor('sa-uno@techstore.com');
   scriptClient([
+    finalMessage(
+      'Resumen: 1 x Audifonos (US$80). Total US$80. Cliente: Maria Lopez (maria@ejemplo.com). ¿Confirmás que aplique el descuento de stock?',
+    ),
     toolCallMessage('register_sale', {
       items: [{ product_name_or_id: 'Audifonos', quantity: 1 }],
       customer_name: 'Maria Lopez',
@@ -209,7 +265,14 @@ test('contacto sin cuenta existente: guarda datos sueltos con user_id null', asy
     finalMessage('Pedido creado.'),
   ]);
 
-  const res = await chat(token, 'Vendi unos audifonos a Maria Lopez, contacto maria@ejemplo.com');
+  const { first, afterFirst, second: res } = await proposeAndConfirm(
+    token,
+    'Vendi unos audifonos a Maria Lopez, contacto maria@ejemplo.com',
+  );
+
+  expect(first.body.order).toBeNull();
+  expect(afterFirst.orders).toBe(0);
+  expect(afterFirst.stockAudifonos).toBe(2);
 
   expect(res.status).toBe(200);
   expect(res.body.order.userId).toBeNull();
@@ -218,27 +281,148 @@ test('contacto sin cuenta existente: guarda datos sueltos con user_id null', asy
   expect(await stockOf(audifonos)).toBe(1);
 });
 
+test('turno 1 con información suficiente: responde con el resumen y la pregunta de confirmación, sin tool call y sin crear el pedido', async () => {
+  const token = await tokenFor('sa-uno@techstore.com');
+  const create = scriptClient([finalMessage(PROPOSAL)]);
+
+  const res = await chat(token, 'Vendí 2 iphone 15 y 1 cable a Juan');
+
+  expect(res.status).toBe(200);
+  expect(res.body.reply).toBe(PROPOSAL);
+  expect(res.body.reply).toContain('iPhone 15');
+  expect(res.body.reply).toContain('¿Confirmás');
+  expect(res.body.order).toBeNull();
+  expect(create.calls).toBe(1);
+  expect(await orderCount()).toBe(0);
+  expect(await stockOf(iphone)).toBe(5);
+  expect(await stockOf(cableOne)).toBe(10);
+});
+
+test('el modelo no puede saltarse la confirmación: si llama register_sale en el turno 1, el pedido NO se crea', async () => {
+  const token = await tokenFor('sa-uno@techstore.com');
+  const create = scriptClient([
+    toolCallMessage('register_sale', { items: [{ product_name_or_id: 'iPhone 15', quantity: 1 }] }),
+    finalMessage('Antes necesito tu confirmación: ¿Confirmás que aplique el descuento de stock?'),
+  ]);
+
+  const res = await chat(token, 'Vendí un iphone 15');
+
+  expect(res.status).toBe(200);
+  expect(res.body.order).toBeNull();
+  expect(res.body.reply).toContain('confirmación');
+  expect(create.calls).toBe(2);
+  expect(await orderCount()).toBe(0);
+  expect(await stockOf(iphone)).toBe(5);
+});
+
+test('negación del store_admin: no ejecuta nada aunque el modelo intente llamar la herramienta', async () => {
+  const token = await tokenFor('sa-uno@techstore.com');
+  const create = scriptClient([
+    finalMessage(PROPOSAL),
+    toolCallMessage('register_sale', {
+      items: [{ product_name_or_id: 'iPhone 15', quantity: 2 }],
+      customer_name: 'Juan Perez',
+    }),
+    finalMessage('Entendido, no registro nada.'),
+  ]);
+
+  const original = 'Vendí 2 iphone 15 a Juan';
+  const { first, afterFirst, second: res } = await proposeAndConfirm(
+    token,
+    original,
+    'No, cancelalo, fue un error',
+  );
+
+  expect(first.body.order).toBeNull();
+  expect(afterFirst.orders).toBe(0);
+  expect(res.status).toBe(200);
+  expect(res.body.order).toBeNull();
+  expect(create.calls).toBe(3);
+  expect(await orderCount()).toBe(0);
+  expect(await stockOf(iphone)).toBe(5);
+});
+
+test('corrección del store_admin ("sí, pero...") no cuenta como confirmación y no ejecuta', async () => {
+  const token = await tokenFor('sa-uno@techstore.com');
+  const create = scriptClient([
+    finalMessage(PROPOSAL),
+    toolCallMessage('register_sale', {
+      items: [{ product_name_or_id: 'iPhone 15', quantity: 2 }],
+    }),
+    finalMessage('Corregime la cantidad y lo registramos.'),
+  ]);
+
+  const original = 'Vendí 2 iphone 15';
+  const { first, afterFirst, second: res } = await proposeAndConfirm(
+    token,
+    original,
+    'Sí, pero eran 3 iphone 15 en total',
+  );
+
+  expect(first.body.order).toBeNull();
+  expect(afterFirst.orders).toBe(0);
+  expect(res.body.order).toBeNull();
+  expect(create.calls).toBe(3);
+  expect(await orderCount()).toBe(0);
+  expect(await stockOf(iphone)).toBe(5);
+});
+
+test('sin propuesta previa en el historial no hay confirmación posible, aunque el último mensaje sea afirmativo', async () => {
+  const token = await tokenFor('sa-uno@techstore.com');
+  scriptClient([
+    toolCallMessage('register_sale', { items: [{ product_name_or_id: 'iPhone 15', quantity: 1 }] }),
+    finalMessage('Primero te resumo y me confirmás.'),
+  ]);
+
+  const res = await chat(token, 'dale, confirmo, son 2 iphone 15');
+
+  expect(res.status).toBe(200);
+  expect(res.body.order).toBeNull();
+  expect(await orderCount()).toBe(0);
+  expect(await stockOf(iphone)).toBe(5);
+});
+
+test('no duplica la venta si el modelo insiste con la herramienta en el mismo turno confirmado', async () => {
+  const token = await tokenFor('sa-uno@techstore.com');
+  scriptClient([
+    finalMessage(PROPOSAL),
+    toolCallMessage('register_sale', { items: [{ product_name_or_id: 'iPhone 15', quantity: 1 }] }),
+    toolCallMessage('register_sale', { items: [{ product_name_or_id: 'iPhone 15', quantity: 1 }] }),
+    finalMessage('Listo, registré la venta.'),
+  ]);
+
+  const original = 'Vendí un iphone 15';
+  const { second: res } = await proposeAndConfirm(token, original);
+
+  expect(res.status).toBe(200);
+  expect(res.body.order).not.toBeNull();
+  expect(await orderCount()).toBe(1);
+  expect(await stockOf(iphone)).toBe(4);
+});
+
 test('producto inexistente y producto ambiguo no ejecutan la venta', async () => {
   const token = await tokenFor('sa-uno@techstore.com');
 
   const create = scriptClient([
+    finalMessage('¿Confirmás que registre 1 x Producto Inexistente?'),
     toolCallMessage('register_sale', {
       items: [{ product_name_or_id: 'Producto Inexistente', quantity: 1 }],
     }),
     finalMessage('No encuentro "Producto Inexistente" en tu catalogo.'),
   ]);
-  const resInexistente = await chat(token, 'Vendi un Producto Inexistente');
+  const { second: resInexistente } = await proposeAndConfirm(token, 'Vendi un Producto Inexistente');
   expect(resInexistente.status).toBe(200);
   expect(resInexistente.body.order).toBeNull();
-  expect(create.calls).toBe(2);
+  expect(create.calls).toBe(3);
 
   scriptClient([
+    finalMessage('¿Confirmás que registre 1 x Cable Tipo C?'),
     toolCallMessage('register_sale', {
       items: [{ product_name_or_id: 'Cable Tipo C', quantity: 1 }],
     }),
     finalMessage('Cual de los dos cables?'),
   ]);
-  const resAmbiguo = await chat(token, 'Vendi un Cable Tipo C');
+  const { second: resAmbiguo } = await proposeAndConfirm(token, 'Vendi un Cable Tipo C');
   expect(resAmbiguo.status).toBe(200);
   expect(resAmbiguo.body.order).toBeNull();
 
@@ -250,13 +434,14 @@ test('producto inexistente y producto ambiguo no ejecutan la venta', async () =>
 test('stock insuficiente no ejecuta la venta ni descuenta stock', async () => {
   const token = await tokenFor('sa-uno@techstore.com');
   scriptClient([
+    finalMessage('¿Confirmás que registre 99 x Audifonos?'),
     toolCallMessage('register_sale', {
       items: [{ product_name_or_id: 'Audifonos', quantity: 99 }],
     }),
     finalMessage('No hay stock suficiente.'),
   ]);
 
-  const res = await chat(token, 'Vendi 99 audifonos');
+  const { second: res } = await proposeAndConfirm(token, 'Vendi 99 audifonos');
 
   expect(res.status).toBe(200);
   expect(res.body.order).toBeNull();
@@ -267,6 +452,7 @@ test('stock insuficiente no ejecuta la venta ni descuenta stock', async () => {
 test('un store_admin no puede vender productos de otra tienda', async () => {
   const token = await tokenFor('sa-uno@techstore.com');
   scriptClient([
+    finalMessage('¿Confirmás que registre 1 x iPhone 15 y 1 x iPhone 15 Pro?'),
     toolCallMessage('register_sale', {
       items: [
         { product_name_or_id: 'iPhone 15', quantity: 1 },
@@ -276,7 +462,7 @@ test('un store_admin no puede vender productos de otra tienda', async () => {
     finalMessage('Ese producto no esta en tu tienda.'),
   ]);
 
-  const res = await chat(token, 'Vendi un iphone 15 y un iphone 15 pro');
+  const { second: res } = await proposeAndConfirm(token, 'Vendi un iphone 15 y un iphone 15 pro');
 
   expect(res.status).toBe(200);
   expect(res.body.order).toBeNull();

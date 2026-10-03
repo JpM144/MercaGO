@@ -6,7 +6,7 @@ const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
   const value = {
-    appName: 'TechStore',
+    appName: 'MercaGO',
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

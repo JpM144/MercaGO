@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import Spinner from './Spinner.jsx';
+import NonActivePlanScreen from './NonActivePlanScreen.jsx';
 
 export default function RequireAdmin({ children }) {
   const { token, user, hydrating } = useAuth();
@@ -14,13 +15,16 @@ export default function RequireAdmin({ children }) {
   }
 
   const isSuperAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-  const isApprovedStoreAdmin = user?.role === 'store_admin' && user?.storeStatus === 'approved';
+  const isStoreAdmin = user?.role === 'store_admin';
+  const isApprovedStoreAdmin = isStoreAdmin && user?.storeStatus === 'approved';
 
   if (!isSuperAdmin && !isApprovedStoreAdmin) {
-    return user?.role === 'store_admin' ? (
-      <Navigate to="/estado-tienda" replace />
-    ) : (
-      <Navigate to="/" replace />
+    return <Navigate to="/" replace />;
+  }
+
+  if (isStoreAdmin && user?.planStatus && user.planStatus !== 'active') {
+    return (
+      <NonActivePlanScreen planStatus={user.planStatus} planExpiresAt={user.planExpiresAt} />
     );
   }
 

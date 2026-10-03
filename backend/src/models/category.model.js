@@ -16,13 +16,20 @@ const Category = sequelize.define(
     slug: {
       type: DataTypes.STRING(120),
       allowNull: false,
-      unique: true,
+    },
+    storeId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: { model: 'stores', key: 'id' },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE',
     },
   },
   {
     tableName: 'categories',
     underscored: true,
     timestamps: true,
+    indexes: [{ unique: true, fields: ['store_id', 'slug'] }],
   },
 );
 

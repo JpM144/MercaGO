@@ -1,10 +1,12 @@
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
+import StorePlanBanner from '../../components/StorePlanBanner.jsx';
 
 const LINKS = [
   { to: '/admin/products', label: 'Productos' },
   { to: '/admin/categories', label: 'Categorías' },
-  { to: '/admin/orders', label: 'Pedidos' },
+  { to: '/admin/plan', label: 'Mi plan' },
+  { to: '/admin/reports', label: 'Informes' },
   { to: '/admin/sales-assistant', label: 'Asistente de ventas' },
 ];
 
@@ -41,6 +43,7 @@ export default function AdminLayout() {
         </Link>
       </aside>
       <div className="grid min-w-0 gap-6">
+        <StorePlanBanner />
         <Outlet />
       </div>
     </div>

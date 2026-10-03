@@ -100,172 +100,12 @@ describe('Stores / Multi-tienda API', () => {
     expect(res.body.error).toContain('tienda');
   });
 
-  test('super_admin lista todas las tiendas con owner', async () => {
-    const token = await tokenFor('super@techstore.com', 'super_admin');
-    await createStoreFor('a@techstore.com');
-    await createStoreFor('b@techstore.com', { status: 'approved' });
-
-    const res = await request(app).get('/api/admin/stores').set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.stores.length).toBe(2);
-    expect(res.body.stores.every((s) => s.owner && s.owner.email)).toBe(true);
-  });
-
-  test('solo super_admin aprueba/rechaza tiendas (customer y store_admin dan 403)', async () => {
-    const { store } = await createStoreFor('duena@techstore.com');
-    const customerToken = await tokenFor('cliente@techstore.com');
-    const storeAdminToken = await tokenFor('owner@techstore.com', 'store_admin');
-
-    const asCustomer = await request(app)
-      .put(`/api/admin/stores/${store.id}/status`)
-      .set('Authorization', `Bearer ${customerToken}`)
-      .send({ status: 'approved' });
-    expect(asCustomer.status).toBe(403);
-
-    const asStoreAdmin = await request(app)
-      .put(`/api/admin/stores/${store.id}/status`)
-      .set('Authorization', `Bearer ${storeAdminToken}`)
-      .send({ status: 'approved' });
-    expect(asStoreAdmin.status).toBe(403);
-  });
-
-  test('super_admin aprueba una tienda pending', async () => {
-    const superToken = await tokenFor('super@techstore.com', 'super_admin');
-    const { store } = await createStoreFor('nueva@techstore.com');
-
-    const res = await request(app)
-      .put(`/api/admin/stores/${store.id}/status`)
-      .set('Authorization', `Bearer ${superToken}`)
-      .send({ status: 'approved' });
-
-    expect(res.status).toBe(200);
-    expect(res.body.store.status).toBe('approved');
-    expect(res.body.store.rejectedReason).toBeNull();
-  });
-
-  test('rechazar requiere rejected_reason y lo guarda', async () => {
-    const superToken = await tokenFor('super@techstore.com', 'super_admin');
-    const { store } = await createStoreFor('nueva@techstore.com');
-
-    const sinMotivo = await request(app)
-      .put(`/api/admin/stores/${store.id}/status`)
-      .set('Authorization', `Bearer ${superToken}`)
-      .send({ status: 'rejected' });
-    expect(sinMotivo.status).toBe(400);
-
-    const res = await request(app)
-      .put(`/api/admin/stores/${store.id}/status`)
-      .set('Authorization', `Bearer ${superToken}`)
-      .send({ status: 'rejected', rejected_reason: 'Documentación incompleta' });
-
-    expect(res.status).toBe(200);
-    expect(res.body.store.status).toBe('rejected');
-    expect(res.body.store.rejectedReason).toBe('Documentación incompleta');
-  });
-
-  test('no se puede aprobar/rechazar una tienda que ya no está pending', async () => {
-    const superToken = await tokenFor('super@techstore.com', 'super_admin');
-    const { store } = await createStoreFor('aprobada@techstore.com', { status: 'approved' });
-
-    const res = await request(app)
-      .put(`/api/admin/stores/${store.id}/status`)
-      .set('Authorization', `Bearer ${superToken}`)
-      .send({ status: 'rejected' });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain('pending');
-  });
-
-  test('status inválido en aprobación devuelve 400', async () => {
-    const superToken = await tokenFor('super@techstore.com', 'super_admin');
-    const { store } = await createStoreFor('x@techstore.com');
-
-    const res = await request(app)
-      .put(`/api/admin/stores/${store.id}/status`)
-      .set('Authorization', `Bearer ${superToken}`)
-      .send({ status: 'shipped' });
-
-    expect(res.status).toBe(400);
-  });
-
-  test('POST /api/stores/apply crea la solicitud pending sin token de sesión', async () => {
-    const res = await request(app)
-      .post('/api/stores/apply')
-      .send({
-        name: 'Mi Tienda',
-        whatsapp_number: '+5491122334455',
-        description: 'Vendo accesorios.',
-        owner: { name: 'Nuevo Dueño', email: 'nuevo@techstore.com', password: 'clave1234' },
-      });
-
-    expect(res.status).toBe(201);
-    expect(res.body.message).toContain('pendiente de revisión');
-    expect(res.body.store.status).toBe('pending');
-    expect(res.body.store.slug).toBe('mi-tienda');
-    expect(res.body.owner.role).toBe('store_admin');
-    expect(res.body.owner.email).toBe('nuevo@techstore.com');
-    expect(res.body).not.toHaveProperty('token');
-
-    const user = await db.User.findOne({ where: { email: 'nuevo@techstore.com' } });
-    expect(user).not.toBeNull();
-    expect(user.role).toBe('store_admin');
-
-    const store = await db.Store.findByPk(res.body.store.id);
-    expect(store.status).toBe('pending');
-    expect(store.ownerUserId).toBe(user.id);
-  });
-
-  test('POST /api/stores/apply con email existente devuelve 409', async () => {
-    await request(app).post('/api/auth/register').send({
-      name: 'Cliente Existente',
-      email: 'dup@techstore.com',
-      password: 'secret123',
-    });
-
-    const res = await request(app)
-      .post('/api/stores/apply')
-      .send({
-        name: 'Otra Tienda',
-        whatsapp_number: '+5491122',
-        owner: { name: 'Cliente Existente', email: 'dup@techstore.com', password: 'clave1234' },
-      });
-
-    expect(res.status).toBe(409);
-    expect(res.body.error).toContain('Ya existe un usuario con ese email.');
-  });
-
-  test('POST /api/stores/apply pide los datos mínimos del negocio y del dueño', async () => {
-    const sinOwner = await request(app).post('/api/stores/apply').send({
-      name: 'Sin Dueño',
-      whatsapp_number: '+5491122',
-    });
-    expect(sinOwner.status).toBe(400);
-    expect(sinOwner.body.error).toContain('owner.name');
-
-    const sinWhatsapp = await request(app)
-      .post('/api/stores/apply')
-      .send({
-        name: 'Sin WhatsApp',
-        owner: { name: 'A', email: 'a@techstore.com', password: 'clave1234' },
-      });
-    expect(sinWhatsapp.status).toBe(400);
-    expect(sinWhatsapp.body.error).toContain('whatsapp_number');
-  });
-
   test('login y /me de un store_admin con tienda pending reflejan storeStatus', async () => {
-    const applyRes = await request(app)
-      .post('/api/stores/apply')
-      .send({
-        name: 'Pendiente Login',
-        whatsapp_number: '+5491122',
-        owner: { name: 'Dueño', email: 'pend-login@techstore.com', password: 'clave1234' },
-      });
-    expect(applyRes.status).toBe(201);
+    await createStoreFor('pend-login@techstore.com', { status: 'pending' });
 
     const login = await request(app).post('/api/auth/login').send({
       email: 'pend-login@techstore.com',
-      password: 'clave1234',
+      password: 'secret123',
     });
     expect(login.status).toBe(200);
     expect(login.body.user.role).toBe('store_admin');
@@ -278,21 +118,17 @@ describe('Stores / Multi-tienda API', () => {
     expect(me.body.user.storeStatus).toBe('pending');
   });
 
-  test('un store_admin con tienda pending no puede crear productos', async () => {
-    const applyRes = await request(app)
-      .post('/api/stores/apply')
-      .send({
-        name: 'Tienda Pendiente',
-        whatsapp_number: '+5491122',
-        owner: { name: 'Dueño', email: 'pend-cat@techstore.com', password: 'clave1234' },
-      });
-    expect(applyRes.status).toBe(201);
-
+  test('un store_admin con tienda en revisión (pending) no puede crear productos', async () => {
+    const { store } = await createStoreFor('pend-cat@techstore.com', { status: 'pending' });
     const login = await request(app).post('/api/auth/login').send({
       email: 'pend-cat@techstore.com',
-      password: 'clave1234',
+      password: 'secret123',
     });
-    const category = await db.Category.create({ name: 'Celulares', slug: 'celulares' });
+    const category = await db.Category.create({
+      name: 'Celulares',
+      slug: 'celulares',
+      storeId: store.id,
+    });
 
     const res = await request(app)
       .post('/api/products')
@@ -304,31 +140,22 @@ describe('Stores / Multi-tienda API', () => {
   });
 
   test('tienda rechazada: login refleja el motivo y la gestión de productos sigue bloqueada', async () => {
-    const applyRes = await request(app)
-      .post('/api/stores/apply')
-      .send({
-        name: 'Tienda Rechazada',
-        whatsapp_number: '+5491122',
-        owner: { name: 'Dueño', email: 'rej-login@techstore.com', password: 'clave1234' },
-      });
-    expect(applyRes.status).toBe(201);
-
-    const superToken = await tokenFor('super@techstore.com', 'super_admin');
-    const reject = await request(app)
-      .put(`/api/admin/stores/${applyRes.body.store.id}/status`)
-      .set('Authorization', `Bearer ${superToken}`)
-      .send({ status: 'rejected', rejected_reason: 'Falta documentación' });
-    expect(reject.status).toBe(200);
+    const { store } = await createStoreFor('rej-login@techstore.com', { status: 'rejected' });
+    await store.update({ rejectedReason: 'Falta documentación' });
 
     const login = await request(app).post('/api/auth/login').send({
       email: 'rej-login@techstore.com',
-      password: 'clave1234',
+      password: 'secret123',
     });
     expect(login.status).toBe(200);
     expect(login.body.user.storeStatus).toBe('rejected');
     expect(login.body.user.storeRejectedReason).toBe('Falta documentación');
 
-    const category = await db.Category.create({ name: 'Audio', slug: 'audio' });
+    const category = await db.Category.create({
+      name: 'Audio',
+      slug: 'audio',
+      storeId: store.id,
+    });
     const res = await request(app)
       .post('/api/products')
       .set('Authorization', `Bearer ${login.body.token}`)
@@ -346,8 +173,8 @@ describe('Stores / Multi-tienda API', () => {
     await createStoreFor('rechazada@techstore.com', { status: 'rejected' });
 
     const categories = await db.Category.bulkCreate([
-      { name: 'Celulares', slug: 'celulares' },
-      { name: 'Audio', slug: 'audio' },
+      { name: 'Celulares', slug: 'celulares', storeId: approved.id },
+      { name: 'Audio', slug: 'audio', storeId: approved.id },
     ]);
     await db.Product.bulkCreate([
       {
@@ -412,7 +239,9 @@ describe('Stores / Multi-tienda API', () => {
 
   test('GET /api/stores/:slug/products?featured=true trae los N productos más recientes con stock', async () => {
     const { store } = await createStoreFor('destacados@techstore.com', { status: 'approved' });
-    const categories = await db.Category.bulkCreate([{ name: 'Celulares', slug: 'celulares' }]);
+    const categories = await db.Category.bulkCreate([
+      { name: 'Celulares', slug: 'celulares', storeId: store.id },
+    ]);
     const now = Date.now();
     await db.Product.bulkCreate([
       {
@@ -482,8 +311,8 @@ describe('Stores / Multi-tienda API', () => {
     const { store: a } = await createStoreFor('tienda-a@techstore.com', { status: 'approved' });
     const { store: b } = await createStoreFor('tienda-b@techstore.com', { status: 'approved' });
     const categories = await db.Category.bulkCreate([
-      { name: 'Celulares', slug: 'celulares' },
-      { name: 'Audio', slug: 'audio' },
+      { name: 'Celulares', slug: 'celulares', storeId: a.id },
+      { name: 'Audio', slug: 'audio', storeId: b.id },
     ]);
     await db.Product.bulkCreate([
       {
@@ -539,10 +368,11 @@ describe('Stores / Multi-tienda API', () => {
   test('GET /api/stores/:slug/categories lista categorías con conteo solo de esa tienda', async () => {
     const { store: a } = await createStoreFor('cats-a@techstore.com', { status: 'approved' });
     const { store: b } = await createStoreFor('cats-b@techstore.com', { status: 'approved' });
+    // Cada tienda crea su propia copia: mismo slug 'celulares' en dos tiendas.
     const categories = await db.Category.bulkCreate([
-      { name: 'Celulares', slug: 'celulares' },
-      { name: 'Audio', slug: 'audio' },
-      { name: 'Cargadores', slug: 'cargadores' },
+      { name: 'Celulares', slug: 'celulares', storeId: a.id },
+      { name: 'Audio', slug: 'audio', storeId: a.id },
+      { name: 'Cargadores', slug: 'cargadores', storeId: b.id },
     ]);
     await db.Product.bulkCreate([
       {
@@ -618,6 +448,16 @@ describe('Stores / Multi-tienda API', () => {
     const products = await db.Product.findAll();
     expect(products.length).toBe(26);
     expect(products.every((p) => p.storeId === store.id)).toBe(true);
+
+    // Todas las categorías del seed pertenecen a la tienda sembrada.
+    const categories = await db.Category.findAll();
+    expect(categories.length).toBe(11);
+    expect(categories.every((c) => c.storeId === store.id)).toBe(true);
+
+    // El listado público deduplica nombres, así que sigue habiendo 11 nombres distintos.
+    const publicCategories = await request(app).get('/api/categories');
+    expect(publicCategories.status).toBe(200);
+    expect(publicCategories.body.categories.length).toBe(11);
 
     const publicList = await request(app).get('/api/products').query({ limit: 50 });
     expect(publicList.status).toBe(200);

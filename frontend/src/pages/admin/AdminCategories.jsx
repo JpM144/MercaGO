@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { fetchCategories } from '../../services/products.js';
-import { createCategory, deleteCategory, updateCategory } from '../../services/admin.js';
+import { createCategory, deleteCategory, fetchStoreCategories, updateCategory } from '../../services/admin.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import Spinner from '../../components/Spinner.jsx';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
@@ -23,13 +22,13 @@ export default function AdminCategories() {
   const load = useCallback(async () => {
     setState({ loading: true, error: null });
     try {
-      const data = await fetchCategories();
+      const data = await fetchStoreCategories(token);
       setCategories(data.categories ?? []);
       setState({ loading: false, error: null });
     } catch (error) {
       setState({ loading: false, error: error.message });
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     load();
@@ -81,7 +80,12 @@ export default function AdminCategories() {
 
   return (
     <div className="grid gap-5">
-      <h2 className="text-2xl font-bold text-ink-900">Categorías</h2>
+      <div className="grid gap-1">
+        <h2 className="text-2xl font-bold text-ink-900">Categorías</h2>
+        <p className="text-sm text-ink-500">
+          Son privadas de tu tienda: sólo vos las ves y ningún cliente ve las de otras tiendas.
+        </p>
+      </div>
 
       {notice && <Notice type={notice.type}>{notice.text}</Notice>}
 

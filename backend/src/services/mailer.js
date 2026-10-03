@@ -1,18 +1,23 @@
 import nodemailer from 'nodemailer';
 import db from '../models/index.js';
 
-export const GMAIL_SMTP_HOST = 'smtp.gmail.com';
-export const GMAIL_SMTP_PORT = 465;
+// Gmail es el destino por defecto; SMTP_HOST/SMTP_PORT permiten apuntar a otro
+// servidor (por ejemplo un buzón de pruebas en la verificación end-to-end).
+export const GMAIL_SMTP_HOST = process.env.SMTP_HOST ?? 'smtp.gmail.com';
+export const GMAIL_SMTP_PORT = Number(process.env.SMTP_PORT) || 465;
 export const GMAIL_USER = process.env.GMAIL_USER ?? '';
 export const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD ?? '';
 
 export function createGmailTransporter() {
-  return nodemailer.createTransport({
+  const options = {
     host: GMAIL_SMTP_HOST,
     port: GMAIL_SMTP_PORT,
-    secure: true,
-    auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
-  });
+    secure: GMAIL_SMTP_PORT === 465,
+  };
+  if (GMAIL_USER) {
+    options.auth = { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD };
+  }
+  return nodemailer.createTransport(options);
 }
 
 let transporterFactory = createGmailTransporter;
@@ -83,6 +88,40 @@ function buildStoreStatusEmail({ store, owner, status, reason }) {
   return { subject, text };
 }
 
+function buildPlanChangeEmail({ store, owner, status, tierName, reason }) {
+  const target = tierName || 'el plan solicitado';
+
+  if (status === 'approved') {
+    const subject = `Tu cambio de plan a "${target}" fue aprobado`;
+    const text = [
+      `¡Buenas noticias, ${owner.name}!`,
+      '',
+      `Tu solicitud de cambio de plan para la tienda "${store.name}" fue aprobada.`,
+      '',
+      `Plan actual: ${target}`,
+      'El nuevo límite de productos ya está vigente: si tenías bloqueada la publicación de productos por límite, ya podés volver a cargar catálogo.',
+      '',
+      'Ya registramos el comprobante de la transferencia que adjuntaste y el plan fue actualizado.',
+      '',
+      'URL de tu tienda: /tienda/' + store.slug,
+    ].join('\n');
+    return { subject, text };
+  }
+
+  const subject = `Tu solicitud de cambio de plan a "${target}" fue rechazada`;
+  const text = [
+    `Hola ${owner.name},`,
+    '',
+    `Lamentablemente tu solicitud para pasar al plan ${target} de la tienda "${store.name}" fue rechazada.`,
+    '',
+    `Motivo del rechazo: ${reason || 'No se informó un motivo.'}`,
+    '',
+    'Tu tienda mantiene su plan actual.',
+    'Podés corregir lo indicado y volver a solicitar un cambio de plan desde el panel.',
+  ].join('\n');
+  return { subject, text };
+}
+
 export async function sendStoreApplicationNotice({ store, owner }) {
   const superAdmins = await db.User.findAll({
     where: { role: 'super_admin' },
@@ -108,4 +147,28 @@ export async function sendStoreStatusNotice({ store, owner, status, reason }) {
   });
 }
 
-export { buildStoreApplicationEmail, buildStoreStatusEmail };
+export async function sendPlanChangeNotice({ store, owner, status, tierName, reason }) {
+  const { subject, text } = buildPlanChangeEmail({ store, owner, status, tierName, reason });
+  const info = await getTransporter().sendMail({
+    from: senderAddress(),
+    to: owner.email,
+    subject,
+    text,
+  });
+
+  if (info?.rejected?.length) {
+    console.error(
+      `[mailer] Gmail rechazó el aviso de cambio de plan (${status}) para ${owner.email}:`,
+      info.rejected.join(', '),
+    );
+  } else {
+    console.log(
+      `[mailer] Aviso de cambio de plan (${status}) aceptado por Gmail para ${owner.email}`,
+      { messageId: info?.messageId, response: info?.response },
+    );
+  }
+
+  return info;
+}
+
+export { buildStoreApplicationEmail, buildStoreStatusEmail, buildPlanChangeEmail };

@@ -11,27 +11,23 @@ export default function Header() {
   const isStoreAdmin = user?.role === 'store_admin';
   const isSuperAdmin = user?.role === 'super_admin';
   const isAdmin = user?.role === 'admin';
-  const storePanelTo = isSuperAdmin
-    ? '/super-admin'
-    : isStoreAdmin && user.storeStatus !== 'approved'
-      ? '/estado-tienda'
-      : '/admin';
+  const storePanelTo = isSuperAdmin ? '/super-admin' : '/admin';
 
   return (
     <header className="sticky top-0 z-10 border-b border-brand-900/40 bg-brand-950 text-white">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
         <Link to="/" className="flex items-center gap-2">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-500 text-sm font-black text-brand-950">
-            T
+            M
           </span>
           <span className="text-xl font-bold tracking-tight">{appName}</span>
         </Link>
         <nav className="flex items-center gap-4 text-sm">
           <Link to="/" className="text-brand-100 transition hover:text-white">
-            Tiendas
-          </Link>
-          <Link to="/catalogo" className="text-brand-100 transition hover:text-white">
             Catálogo
+          </Link>
+          <Link to="/tiendas" className="text-brand-100 transition hover:text-white">
+            Tiendas
           </Link>
           {(isSuperAdmin || isAdmin || isStoreAdmin) && (
             <Link

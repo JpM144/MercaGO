@@ -55,18 +55,18 @@ export default function StoreHomePage() {
           icon="🛡️"
           title="Compra segura"
           description={
-            store.paymentMethods ?? 'Pagá con los métodos de pago que prefieras, con tranquilidad.'
+            store.paymentMethods ?? 'Paga con los métodos de pago que prefieras, con tranquilidad.'
           }
         />
         <Badge
           icon="🚚"
           title="Envíos"
-          description={store.shippingInfo ?? 'Consultá por los envíos disponibles a tu zona.'}
+          description={store.shippingInfo ?? 'Consulta por los envíos disponibles a tu zona.'}
         />
         <Badge
           icon="🧾"
           title="Garantía"
-          description={store.warrantyInfo ?? 'Productos con garantía. Consultá las condiciones.'}
+          description={store.warrantyInfo ?? 'Productos con garantía. Consulta las condiciones.'}
         />
       </div>
 
@@ -100,7 +100,7 @@ export default function StoreHomePage() {
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-ink-300 bg-white px-6 py-12 text-center text-ink-500">
-                Todavía no hay productos destacados en esta tienda. ¡Volvé pronto!
+                Todavía no hay productos destacados en esta tienda. ¡Vuelve pronto!
               </div>
             )}
           </>

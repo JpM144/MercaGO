@@ -1,17 +1,17 @@
 import { Router } from 'express';
 import {
-  applyForStore,
   getMyStore,
   getPublicStore,
   listPublicStores,
   storeProducts,
   storeCategories,
 } from '../controllers/store.controller.js';
+import { applyForStore } from '../controllers/storeApplication.controller.js';
 import { requireStoreAdmin } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
-// Solicitud pública para abrir una tienda (queda 'pending' hasta la revisión de un super admin).
+// Solicitud pública para abrir una tienda (crea una store_application hasta su revisión).
 router.post('/apply', applyForStore);
 router.get('/me', requireStoreAdmin, getMyStore);
 

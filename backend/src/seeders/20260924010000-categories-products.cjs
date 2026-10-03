@@ -16,37 +16,6 @@ module.exports = {
     const seq = queryInterface.sequelize;
     const now = new Date();
 
-    // --- Categorías ---
-    const categories = [
-      { name: 'Celulares', slug: 'celulares', created_at: now, updated_at: now },
-      { name: 'Forros y fundas', slug: 'forros-y-fundas', created_at: now, updated_at: now },
-      { name: 'Accesorios', slug: 'accesorios', created_at: now, updated_at: now },
-      { name: 'Audio', slug: 'audio', created_at: now, updated_at: now },
-      { name: 'Cargadores', slug: 'cargadores', created_at: now, updated_at: now },
-      { name: 'Smartwatches', slug: 'smartwatches', created_at: now, updated_at: now },
-      { name: 'Cables', slug: 'cables', created_at: now, updated_at: now },
-      { name: 'Soportes', slug: 'soportes', created_at: now, updated_at: now },
-      { name: 'Baterías externas', slug: 'baterias-externas', created_at: now, updated_at: now },
-      {
-        name: 'Accesorios para carro',
-        slug: 'accesorios-para-carro',
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        name: 'Protectores de pantalla',
-        slug: 'protectores-de-pantalla',
-        created_at: now,
-        updated_at: now,
-      },
-    ];
-    await queryInterface.bulkInsert('categories', categories);
-
-    const categoryRows = await seq.query('SELECT id, slug FROM categories;', {
-      type: Sequelize.QueryTypes.SELECT,
-    });
-    const categoryIdBySlug = Object.fromEntries(categoryRows.map((row) => [row.slug, row.id]));
-
     // --- Usuarios (upsert por email: la migración de backfill puede haberlos creado antes) ---
     const passwordHash = bcrypt.hashSync(PLACEHOLDER_PASSWORD, 10);
 
@@ -114,6 +83,33 @@ module.exports = {
         },
       },
     );
+
+    // --- Categorías (privadas de la tienda: por eso van después de crearla) ---
+    const categories = [
+      { name: 'Celulares', slug: 'celulares' },
+      { name: 'Forros y fundas', slug: 'forros-y-fundas' },
+      { name: 'Accesorios', slug: 'accesorios' },
+      { name: 'Audio', slug: 'audio' },
+      { name: 'Cargadores', slug: 'cargadores' },
+      { name: 'Smartwatches', slug: 'smartwatches' },
+      { name: 'Cables', slug: 'cables' },
+      { name: 'Soportes', slug: 'soportes' },
+      { name: 'Baterías externas', slug: 'baterias-externas' },
+      { name: 'Accesorios para carro', slug: 'accesorios-para-carro' },
+      { name: 'Protectores de pantalla', slug: 'protectores-de-pantalla' },
+    ].map((category) => ({
+      ...category,
+      store_id: store.id,
+      created_at: now,
+      updated_at: now,
+    }));
+    await queryInterface.bulkInsert('categories', categories);
+
+    const categoryRows = await seq.query('SELECT id, slug FROM categories WHERE store_id = :id;', {
+      replacements: { id: store.id },
+      type: Sequelize.QueryTypes.SELECT,
+    });
+    const categoryIdBySlug = Object.fromEntries(categoryRows.map((row) => [row.slug, row.id]));
 
     // --- Productos ---
     const products = [

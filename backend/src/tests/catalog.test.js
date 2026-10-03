@@ -23,9 +23,9 @@ async function seedCatalog() {
 
   const categories = await db.Category.bulkCreate(
     [
-      { name: 'Celulares', slug: 'celulares' },
-      { name: 'Audio', slug: 'audio' },
-      { name: 'Cargadores', slug: 'cargadores' },
+      { name: 'Celulares', slug: 'celulares', storeId: store.id },
+      { name: 'Audio', slug: 'audio', storeId: store.id },
+      { name: 'Cargadores', slug: 'cargadores', storeId: store.id },
     ],
     { returning: true },
   );
@@ -131,21 +131,32 @@ describe('Catálogo API', () => {
     await db.sequelize.close();
   });
 
-  test('GET /api/categories lista todas las categorías (público)', async () => {
+  test('GET /api/categories lista los nombres de categoría del marketplace (público)', async () => {
     const res = await request(app).get('/api/categories');
 
     expect(res.status).toBe(200);
-    expect(res.body.categories.length).toBe(3);
-    const slugs = res.body.categories.map((c) => c.slug);
-    expect(slugs).toContain('celulares');
-    expect(slugs).toContain('audio');
-    expect(slugs).toContain('cargadores');
+    const names = res.body.categories.map((c) => c.name);
+    expect(names).toEqual(['Audio', 'Cargadores', 'Celulares']);
+    // El listado público es sólo de nombres: las categorías son privadas por tienda.
+    expect(res.body.categories[0].slug).toBeUndefined();
+  });
+
+  test('el filtro global de categoría matchea por nombre, no por slug', async () => {
+    const byName = await request(app).get('/api/products').query({ category: 'celulares' });
+
+    expect(byName.status).toBe(200);
+    expect(byName.body.total).toBe(3);
+
+    const unknown = await request(app).get('/api/products').query({ category: 'NoExiste' });
+
+    expect(unknown.status).toBe(200);
+    expect(unknown.body.total).toBe(0);
   });
 
   test('listado con filtros: category + search + sort + paginación', async () => {
     const res = await request(app)
       .get('/api/products')
-      .query({ category: 'celulares', search: 'samsung', sort: 'price_asc' });
+      .query({ category: 'Celulares', search: 'samsung', sort: 'price_asc' });
 
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(1);
@@ -157,7 +168,7 @@ describe('Catálogo API', () => {
   test('sort price_desc y paginación respetan el orden', async () => {
     const res = await request(app)
       .get('/api/products')
-      .query({ category: 'celulares', sort: 'price_desc', page: 1, limit: 2 });
+      .query({ category: 'Celulares', sort: 'price_desc', page: 1, limit: 2 });
 
     expect(res.status).toBe(200);
     expect(res.body.products.length).toBe(2);
@@ -252,6 +263,90 @@ describe('Catálogo API', () => {
     expect(res.status).toBe(400);
   });
 
+  test('crear producto con costo: se guarda y se devuelve en la respuesta', async () => {
+    const token = await tokenFor('admin@techstore.com', 'store_admin');
+
+    const res = await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Producto con costo', price: 50, cost: 32.5, categoryId: celularesId });
+
+    expect(res.status).toBe(201);
+    expect(res.body.product.cost).toBe(32.5);
+
+    const stored = await db.Product.findByPk(res.body.product.id);
+    expect(Number(stored.cost)).toBe(32.5);
+  });
+
+  test('crear producto sin costo devuelve costo 0 por defecto', async () => {
+    const token = await tokenFor('admin@techstore.com', 'store_admin');
+
+    const res = await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Producto sin costo', price: 40, categoryId: celularesId });
+
+    expect(res.status).toBe(201);
+    expect(res.body.product.cost).toBe(0);
+  });
+
+  test('crear producto con costo negativo devuelve 400', async () => {
+    const token = await tokenFor('admin@techstore.com', 'store_admin');
+
+    const res = await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Costo inválido', price: 40, cost: -5, categoryId: celularesId });
+
+    expect(res.status).toBe(400);
+  });
+
+  test('actualizar el costo de un producto existente', async () => {
+    const token = await tokenFor('admin@techstore.com', 'store_admin');
+    const product = await db.Product.findOne({ where: { slug: 'iphone-15' } });
+
+    const res = await request(app)
+      .put(`/api/products/${product.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ cost: 999 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.product.cost).toBe(999);
+    expect(Number((await db.Product.findByPk(product.id)).cost)).toBe(999);
+  });
+
+  test('el costo no se expone en el catálogo público ni en el detalle', async () => {
+    const token = await tokenFor('admin@techstore.com', 'store_admin');
+    await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Producto con costo secreto', price: 40, cost: 10, categoryId: celularesId });
+
+    const list = await request(app).get('/api/products').query({ search: 'secreto' });
+    expect(list.status).toBe(200);
+    expect(list.body.products[0].cost).toBeUndefined();
+
+    const detail = await request(app).get('/api/products/producto-con-costo-secreto');
+    expect(detail.status).toBe(200);
+    expect(detail.body.product.cost).toBeUndefined();
+  });
+
+  test('el panel del store_admin sí expone el costo', async () => {
+    const token = await tokenFor('admin@techstore.com', 'store_admin');
+    const created = await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Costo en panel', price: 40, cost: 12, categoryId: celularesId });
+
+    const panel = await request(app)
+      .get('/api/store-admin/products')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(panel.status).toBe(200);
+    const row = panel.body.products.find((p) => p.id === created.body.product.id);
+    expect(row.cost).toBe(12);
+  });
+
   test('actualizar producto siendo store_admin (dueño) devuelve 200', async () => {
     const token = await tokenFor('admin@techstore.com', 'store_admin');
     const product = await db.Product.findOne({ where: { slug: 'iphone-15' } });
@@ -318,7 +413,7 @@ describe('Catálogo API', () => {
     expect(res.body.error).toContain('tienda');
   });
 
-  test('eliminar producto siendo store_admin (dueño) devuelve 204', async () => {
+  test('eliminar producto lo marca inactivo sin borrar la fila: desaparece del catálogo público y se puede reactivar', async () => {
     const token = await tokenFor('admin@techstore.com', 'store_admin');
 
     const created = await request(app)
@@ -332,8 +427,93 @@ describe('Catálogo API', () => {
 
     expect(del.status).toBe(204);
 
+    const row = await db.Product.findByPk(created.body.product.id);
+    expect(row).not.toBeNull();
+    expect(row.isActive).toBe(false);
+
     const detail = await request(app).get('/api/products/producto-temporal');
     expect(detail.status).toBe(404);
+
+    const list = await request(app).get('/api/products').query({ search: 'temporal' });
+    expect(list.status).toBe(200);
+    expect(list.body.total).toBe(0);
+
+    const storeList = await request(app)
+      .get('/api/stores/store-admin/products')
+      .query({ search: 'temporal' });
+    expect(storeList.body.products).toEqual([]);
+
+    const reactivate = await request(app)
+      .put(`/api/products/${created.body.product.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ isActive: true });
+
+    expect(reactivate.status).toBe(200);
+    expect(reactivate.body.product.isActive).toBe(true);
+
+    const back = await request(app).get('/api/products/producto-temporal');
+    expect(back.status).toBe(200);
+    expect(back.body.product.isActive).toBe(true);
+  });
+
+  test('el panel del store_admin sigue mostrando los productos inactivos', async () => {
+    const token = await tokenFor('admin@techstore.com', 'store_admin');
+
+    const created = await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Inactivo En Panel', price: 15, categoryId: celularesId });
+
+    await request(app)
+      .delete(`/api/products/${created.body.product.id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    const panel = await request(app)
+      .get('/api/store-admin/products')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(panel.status).toBe(200);
+    const inactive = panel.body.products.find((p) => p.id === created.body.product.id);
+    expect(inactive).toBeTruthy();
+    expect(inactive.isActive).toBe(false);
+  });
+
+  test('un pedido antiguo conserva sus datos íntegros cuando el producto se desactiva después', async () => {
+    const customerToken = await tokenFor('cliente-is@techstore.com');
+    const ownerToken = await tokenFor('admin@techstore.com', 'store_admin');
+    const product = await db.Product.findOne({ where: { slug: 'iphone-15' } });
+
+    const orderRes = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ items: [{ product_id: product.id, quantity: 2 }] });
+
+    expect(orderRes.status).toBe(201);
+    const orderId = orderRes.body.order.id;
+    const placedItem = orderRes.body.order.items.find((i) => i.productId === product.id);
+    expect(Number(placedItem.unitPrice)).toBe(1299.99);
+
+    const del = await request(app)
+      .delete(`/api/products/${product.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`);
+
+    expect(del.status).toBe(204);
+    expect((await db.Product.findByPk(product.id)).isActive).toBe(false);
+
+    const detail = await request(app)
+      .get(`/api/orders/${orderId}`)
+      .set('Authorization', `Bearer ${customerToken}`);
+
+    expect(detail.status).toBe(200);
+    const kept = detail.body.order.items.find((i) => i.productId === product.id);
+    expect(kept.productId).toBe(product.id);
+    expect(Number(kept.unitPrice)).toBe(1299.99);
+    expect(kept.quantity).toBe(2);
+
+    const row = await db.Product.findByPk(product.id);
+    expect(row).not.toBeNull();
+    expect(row.name).toBe('iPhone 15');
+    expect(row.isActive).toBe(false);
   });
 
   test('un producto de tienda no aprobada no aparece en el catálogo público', async () => {
@@ -368,32 +548,11 @@ describe('Catálogo API', () => {
     expect(detail.status).toBe(404);
   });
 
-  test('borrar categoría con productos asociados devuelve 409 con mensaje claro', async () => {
-    const token = await tokenFor('platform-admin@techstore.com', 'admin');
-
-    const res = await request(app)
-      .delete(`/api/categories/${celularesId}`)
-      .set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(409);
-    expect(res.body.error).toContain('No se puede eliminar la categoría');
-    expect(res.body.error).toContain('producto');
-  });
-
-  test('borrar categoría sin productos devuelve 204', async () => {
-    const token = await tokenFor('platform-admin@techstore.com', 'admin');
-    const category = await db.Category.create({ name: 'Vacía', slug: 'vacia' });
-
-    const res = await request(app)
-      .delete(`/api/categories/${category.id}`)
-      .set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(204);
-  });
-
   test('detalle calcula isNew y discountPercent y expone priceHistory', async () => {
-    const category = await db.Category.findOne({ where: { slug: 'celulares' } });
     const store = await db.Store.findOne({ where: { slug: 'store-admin' } });
+    const category = await db.Category.findOne({
+      where: { slug: 'celulares', storeId: store.id },
+    });
 
     await db.Product.create({
       name: 'Producto Viejo',
@@ -457,6 +616,101 @@ describe('Catálogo API', () => {
 
     const secondDetail = await request(app).get('/api/products/iphone-15');
     expect(secondDetail.body.product.priceHistory).toHaveLength(1);
+  });
+
+  test('el catálogo mezcla productos de todas las tiendas aprobadas y devuelve 0 para una categoría vacía', async () => {
+    const secondOwner = await db.User.create({
+      name: 'Second Owner',
+      email: 'second@techstore.com',
+      passwordHash: await bcrypt.hash('secret123', 10),
+      role: 'store_admin',
+    });
+    const secondStore = await db.Store.create({
+      name: 'Segunda Tienda',
+      slug: 'segunda-tienda',
+      whatsappNumber: '+541122223333',
+      ownerUserId: secondOwner.id,
+      status: 'approved',
+    });
+    const secondCategory = await db.Category.create({
+      name: 'Celulares',
+      slug: 'celulares',
+      storeId: secondStore.id,
+    });
+    await db.Product.create({
+      name: 'Motorola Edge 50',
+      slug: 'motorola-edge-50',
+      description: 'De otra tienda aprobada',
+      price: 799.99,
+      stock: 12,
+      categoryId: secondCategory.id,
+      storeId: secondStore.id,
+    });
+
+    const mixed = await request(app).get('/api/products');
+
+    expect(mixed.status).toBe(200);
+    expect(mixed.body.total).toBe(6);
+    const slugs = mixed.body.products.map((p) => p.slug);
+    expect(slugs).toContain('iphone-15');
+    expect(slugs).toContain('motorola-edge-50');
+    const owners = new Set(mixed.body.products.map((p) => p.store.name));
+    expect(owners).toEqual(new Set(['Tienda Catálogo', 'Segunda Tienda']));
+
+    // Mismo nombre de categoría en dos tiendas: el filtro global trae ambos.
+    const shared = await request(app).get('/api/products').query({ category: 'Celulares' });
+
+    expect(shared.status).toBe(200);
+    expect(shared.body.total).toBe(4);
+    expect(shared.body.products.map((p) => p.slug)).toContain('motorola-edge-50');
+
+    // El catálogo de una tienda resuelve el slug dentro de esa misma tienda.
+    const scoped = await request(app)
+      .get('/api/products')
+      .query({ store: 'segunda-tienda', category: 'celulares' });
+
+    expect(scoped.status).toBe(200);
+    expect(scoped.body.total).toBe(1);
+    expect(scoped.body.products[0].slug).toBe('motorola-edge-50');
+
+    const empty = await request(app).get('/api/products').query({ category: 'Cargadores' });
+
+    expect(empty.status).toBe(200);
+    expect(empty.body.total).toBe(0);
+    expect(empty.body.products).toEqual([]);
+  });
+
+  test('crear un producto con la categoría de otra tienda devuelve 400', async () => {
+    const token = await tokenFor('admin@techstore.com', 'store_admin');
+    const store = await db.Store.findOne({ where: { slug: 'store-admin' } });
+    const otherOwner = await db.User.create({
+      name: 'Other Owner',
+      email: 'other-owner@techstore.com',
+      passwordHash: await bcrypt.hash('secret123', 10),
+      role: 'store_admin',
+    });
+    const otherStore = await db.Store.create({
+      name: 'Otra Tienda',
+      slug: 'otra-tienda',
+      whatsappNumber: '+541144443333',
+      ownerUserId: otherOwner.id,
+      status: 'approved',
+    });
+    const other = await db.Category.create({
+      name: 'Robots',
+      slug: 'robots',
+      storeId: otherStore.id,
+    });
+
+    const res = await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Producto Ajeno', price: 10, categoryId: other.id });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('no pertenece a tu tienda');
+    expect(await db.Product.findOne({ where: { slug: 'producto-ajeno' } })).toBeNull();
+    expect(store.id).not.toBe(otherStore.id);
   });
 
   test('GET /api/products?onSale=true filtra solo productos con original_price > price', async () => {

@@ -346,7 +346,7 @@ export default function StoreProductDetailPage() {
           />
         ) : (
           <div className="rounded-xl border border-ink-200 bg-white p-5 text-sm text-ink-600 shadow-sm">
-            ¿Ya compraste este producto?{' '}
+            ¿Probaste este producto?{' '}
             <Link
               to="/login"
               state={{ from: productHref(product, storeSlug) }}

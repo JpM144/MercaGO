@@ -23,8 +23,8 @@ async function seedCatalog() {
 
   const categories = await db.Category.bulkCreate(
     [
-      { name: 'Celulares', slug: 'celulares' },
-      { name: 'Audio', slug: 'audio' },
+      { name: 'Celulares', slug: 'celulares', storeId: store.id },
+      { name: 'Audio', slug: 'audio', storeId: store.id },
     ],
     { returning: true },
   );

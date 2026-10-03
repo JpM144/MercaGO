@@ -47,6 +47,11 @@ export default function ProductCard({ product }) {
       <FavoriteButton product={product} className="absolute right-2 top-2" />
       <Link to={detailTo} className="flex flex-1 flex-col gap-1 p-4">
         <h3 className="font-medium text-ink-900 group-hover:text-brand-700">{product.name}</h3>
+        {product.store?.name && (
+          <span className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+            {product.store.name}
+          </span>
+        )}
         <div className="mt-auto pt-2">
           {discount != null && (
             <p className="text-xs font-medium text-ink-400 line-through">

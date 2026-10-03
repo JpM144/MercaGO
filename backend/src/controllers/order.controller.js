@@ -95,6 +95,7 @@ export async function createOrder(req, res, next) {
           productId: r.product.id,
           quantity: r.quantity,
           unitPrice: r.product.price,
+          unitCost: r.product.cost,
         })),
         { transaction: t },
       );
@@ -172,6 +173,29 @@ export async function listAllOrders(req, res, next) {
   }
 }
 
+async function transitionOrderStatus(order, nextStatus) {
+  const currentStatus = order.status;
+  if (!ALLOWED_TRANSITIONS[currentStatus].includes(nextStatus)) {
+    const error = new Error(
+      `No se puede cambiar el pedido de "${currentStatus}" a "${nextStatus}".`,
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await db.sequelize.transaction(async (t) => {
+    if (nextStatus === 'cancelled') {
+      for (const item of order.items) {
+        await db.Product.update(
+          { stock: db.sequelize.literal(`stock + ${item.quantity}`) },
+          { where: { id: item.productId }, transaction: t },
+        );
+      }
+    }
+    await order.update({ status: nextStatus }, { transaction: t });
+  });
+}
+
 export async function updateOrderStatus(req, res, next) {
   try {
     const { status: nextStatus } = req.body ?? {};
@@ -189,24 +213,123 @@ export async function updateOrderStatus(req, res, next) {
       return res.status(404).json({ error: 'Pedido no encontrado.' });
     }
 
-    const currentStatus = order.status;
-    if (!ALLOWED_TRANSITIONS[currentStatus].includes(nextStatus)) {
+    try {
+      await transitionOrderStatus(order, nextStatus);
+    } catch (error) {
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({ error: error.message });
+      }
+      return next(error);
+    }
+
+    const updated = await db.Order.findByPk(order.id, { include: [ORDER_INCLUDE] });
+    return res.json({ order: toOrderJson(updated) });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export function storeOrderItemsFilter(storeId) {
+  return {
+    model: db.OrderItem,
+    as: 'items',
+    required: true,
+    include: [
+      {
+        model: db.Product,
+        as: 'product',
+        attributes: ['id', 'name', 'slug', 'imageUrl', 'stock'],
+        where: { storeId },
+        required: true,
+      },
+    ],
+  };
+}
+
+export async function listStoreOrders(req, res, next) {
+  try {
+    const { status } = req.query;
+    if (status && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({
-        error: `No se puede cambiar el pedido de "${currentStatus}" a "${nextStatus}".`,
+        error: `status inválido. Valores permitidos: ${VALID_STATUSES.join(', ')}.`,
       });
     }
 
-    await db.sequelize.transaction(async (t) => {
-      if (nextStatus === 'cancelled') {
-        for (const item of order.items) {
-          await db.Product.update(
-            { stock: db.sequelize.literal(`stock + ${item.quantity}`) },
-            { where: { id: item.productId }, transaction: t },
-          );
-        }
-      }
-      await order.update({ status: nextStatus }, { transaction: t });
+    const orders = await db.Order.findAll({
+      where: status ? { status } : {},
+      order: [['createdAt', 'DESC']],
+      include: [
+        storeOrderItemsFilter(req.store.id),
+        { model: db.User, as: 'user', attributes: ['id', 'name', 'email'] },
+      ],
     });
+
+    return res.json({ orders: orders.map(toOrderJson) });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function getStoreOrder(req, res, next) {
+  try {
+    const order = await db.Order.findOne({
+      where: { id: req.params.id },
+      include: [
+        storeOrderItemsFilter(req.store.id),
+        { model: db.User, as: 'user', attributes: ['id', 'name', 'email'] },
+      ],
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Pedido no encontrado en tu tienda.' });
+    }
+
+    return res.json({ order: toOrderJson(order) });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function updateStoreOrderStatus(req, res, next) {
+  try {
+    const { status: nextStatus } = req.body ?? {};
+
+    if (!VALID_STATUSES.includes(nextStatus)) {
+      return res.status(400).json({
+        error: `status inválido. Valores permitidos: ${VALID_STATUSES.join(', ')}.`,
+      });
+    }
+
+    const order = await db.Order.findByPk(req.params.id, {
+      include: [ORDER_INCLUDE],
+    });
+    if (!order) {
+      return res.status(404).json({ error: 'Pedido no encontrado.' });
+    }
+
+    const ownItemCount = await db.OrderItem.count({
+      where: { orderId: order.id },
+      include: [
+        {
+          model: db.Product,
+          as: 'product',
+          where: { storeId: req.store.id },
+          required: true,
+        },
+      ],
+    });
+    if (ownItemCount === 0) {
+      return res.status(403).json({ error: 'El pedido no pertenece a tu tienda.' });
+    }
+
+    try {
+      await transitionOrderStatus(order, nextStatus);
+    } catch (error) {
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({ error: error.message });
+      }
+      return next(error);
+    }
 
     const updated = await db.Order.findByPk(order.id, { include: [ORDER_INCLUDE] });
     return res.json({ order: toOrderJson(updated) });

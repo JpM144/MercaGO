@@ -3,7 +3,14 @@ import bcrypt from 'bcryptjs';
 import app from '../app.js';
 import db from '../models/index.js';
 
+const FIVE_MB = 5 * 1024 * 1024;
+
 let productId;
+
+function photoBuffer(mime) {
+  const content = mime === 'image/webp' ? Buffer.from('RIFF-WEBP-FOTO') : Buffer.from('PNG-FOTO');
+  return { buffer: content, filename: mime === 'image/webp' ? 'foto.webp' : 'foto.png', mime };
+}
 
 async function seedCatalog() {
   const storeAdmin = await db.User.create({
@@ -20,9 +27,10 @@ async function seedCatalog() {
     status: 'approved',
   });
 
-  const categories = await db.Category.bulkCreate([{ name: 'Celulares', slug: 'celulares' }], {
-    returning: true,
-  });
+  const categories = await db.Category.bulkCreate(
+    [{ name: 'Celulares', slug: 'celulares', storeId: store.id }],
+    { returning: true },
+  );
   const [product] = await db.Product.bulkCreate(
     [
       {
@@ -39,50 +47,28 @@ async function seedCatalog() {
   productId = product.id;
 }
 
-async function tokenFor(email, role = 'customer') {
-  if (role === 'admin') {
-    const passwordHash = await bcrypt.hash('secret123', 10);
-    await db.User.create({ name: 'Admin User', email, passwordHash, role: 'admin' });
-  } else {
-    await request(app).post('/api/auth/register').send({
-      name: 'Customer User',
-      email,
-      password: 'secret123',
-    });
-  }
+async function tokenFor(email) {
+  await request(app).post('/api/auth/register').send({
+    name: 'Customer User',
+    email,
+    password: 'secret123',
+  });
   const login = await request(app).post('/api/auth/login').send({ email, password: 'secret123' });
   return login.body.token;
 }
 
-async function buyProductAs(token, status = 'confirmed', adminToken = null) {
-  const created = await request(app)
-    .post('/api/orders')
+function postReview(token, { rating = 5, comment, photo } = {}) {
+  let req = request(app)
+    .post(`/api/products/${productId}/reviews`)
     .set('Authorization', `Bearer ${token}`)
-    .send({ items: [{ product_id: productId, quantity: 1 }] });
-
-  const resolvedAdminToken = adminToken ?? (await tokenFor('admin@techstore.com', 'admin'));
-  const update = await request(app)
-    .put(`/api/admin/orders/${created.body.order.id}/status`)
-    .set('Authorization', `Bearer ${resolvedAdminToken}`)
-    .send({ status });
-
-  return { order: created.body.order, update: update.body.order };
-}
-
-async function registerGuestPurchase(status = 'confirmed') {
-  const product = await db.Product.findByPk(productId);
-  const order = await db.Order.create({
-    userId: null,
-    status,
-    total: Number(product.price),
-  });
-  await db.OrderItem.create({
-    orderId: order.id,
-    productId,
-    quantity: 1,
-    unitPrice: Number(product.price),
-  });
-  return order;
+    .field('rating', String(rating));
+  if (comment !== undefined) {
+    req = req.field('comment', comment);
+  }
+  if (photo) {
+    req = req.attach('photo', photo.buffer, { filename: photo.filename, contentType: photo.mime });
+  }
+  return req;
 }
 
 describe('Reviews API', () => {
@@ -95,91 +81,96 @@ describe('Reviews API', () => {
     await db.sequelize.close();
   });
 
-  test('reseña exitosa de un producto comprado (confirmado)', async () => {
+  test('un cliente sin compra previa puede reseñar; la foto se guarda y se sirve', async () => {
     const token = await tokenFor('cliente@techstore.com');
-    await buyProductAs(token);
 
-    const res = await request(app)
-      .post(`/api/products/${productId}/reviews`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ rating: 5, comment: 'Excelente teléfono' });
+    const res = await postReview(token, {
+      rating: 5,
+      comment: 'Excelente teléfono',
+      photo: photoBuffer('image/png'),
+    });
 
     expect(res.status).toBe(201);
     expect(res.body.review.rating).toBe(5);
     expect(res.body.review.comment).toBe('Excelente teléfono');
+    expect(res.body.review.photoUrl).toMatch(/^\/uploads\/reviews\/.+\.png$/);
     expect(res.body.review.user.name).toBe('Customer User');
     expect(res.body.review.user).not.toHaveProperty('email');
+
+    const served = await request(app).get(res.body.review.photoUrl);
+    expect(served.status).toBe(200);
+    expect(served.headers['content-type']).toContain('image/png');
   });
 
-  test('el detalle del producto refleja promedio y conteo de reseñas', async () => {
+  test('la foto es obligatoria: una reseña sin foto devuelve 400', async () => {
     const token = await tokenFor('cliente@techstore.com');
-    const adminToken = await tokenFor('admin@techstore.com', 'admin');
-    await buyProductAs(token, 'confirmed', adminToken);
 
-    await request(app)
+    const res = await postReview(token, { rating: 5, comment: 'Sin foto' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('foto');
+  });
+
+  test('un tipo de archivo no permitido devuelve 400', async () => {
+    const token = await tokenFor('cliente@techstore.com');
+
+    const res = await request(app)
       .post(`/api/products/${productId}/reviews`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ rating: 4, comment: 'Muy bueno' });
+      .field('rating', '5')
+      .attach('photo', Buffer.from('texto plano'), { filename: 'nota.txt', contentType: 'text/plain' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('JPG, PNG o WebP');
+  });
+
+  test('un archivo mayor a 5 MB devuelve 400', async () => {
+    const token = await tokenFor('cliente@techstore.com');
+
+    const res = await request(app)
+      .post(`/api/products/${productId}/reviews`)
+      .set('Authorization', `Bearer ${token}`)
+      .field('rating', '5')
+      .attach('photo', Buffer.alloc(FIVE_MB + 1024), { filename: 'grande.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('5 MB');
+  });
+
+  test('el detalle del producto refleja promedio, conteo y foto en cada reseña', async () => {
+    const token = await tokenFor('cliente@techstore.com');
+    await postReview(token, { rating: 4, comment: 'Muy bueno', photo: photoBuffer('image/png') });
 
     const otroToken = await tokenFor('otro@techstore.com');
-    await buyProductAs(otroToken, 'confirmed', adminToken);
-    await request(app)
-      .post(`/api/products/${productId}/reviews`)
-      .set('Authorization', `Bearer ${otroToken}`)
-      .send({ rating: 2 });
+    await postReview(otroToken, { rating: 2, photo: photoBuffer('image/webp') });
 
     const detail = await request(app).get('/api/products/iphone-15');
 
     expect(detail.status).toBe(200);
     expect(detail.body.ratingCount).toBe(2);
     expect(detail.body.ratingAverage).toBe(3);
+    expect(detail.body.reviews.length).toBe(2);
+    expect(detail.body.reviews.every((r) => r.photoUrl && r.photoUrl.startsWith('/uploads/reviews/'))).toBe(true);
 
     const list = await request(app).get(`/api/products/${productId}/reviews`);
     expect(list.status).toBe(200);
     expect(list.body.ratingCount).toBe(2);
     expect(list.body.reviews.length).toBe(2);
     expect(list.body.reviews.every((r) => r.user && typeof r.user.name === 'string')).toBe(true);
-  });
-
-  test('intento de reseña sin haber comprado devuelve 403', async () => {
-    const token = await tokenFor('cliente@techstore.com');
-
-    const res = await request(app)
-      .post(`/api/products/${productId}/reviews`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ rating: 5, comment: 'No compré esto' });
-
-    expect(res.status).toBe(403);
-    expect(res.body.error).toContain('comprado');
-  });
-
-  test('un pedido en status pending no habilita a reseñar', async () => {
-    const token = await tokenFor('cliente@techstore.com');
-    await buyProductAs(token, 'pending');
-
-    const res = await request(app)
-      .post(`/api/products/${productId}/reviews`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ rating: 5 });
-
-    expect(res.status).toBe(403);
+    expect(list.body.reviews.every((r) => r.photoUrl.startsWith('/uploads/reviews/'))).toBe(true);
   });
 
   test('intento de reseña duplicada devuelve 409', async () => {
     const token = await tokenFor('cliente@techstore.com');
-    await buyProductAs(token);
 
-    const first = await request(app)
-      .post(`/api/products/${productId}/reviews`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ rating: 5, comment: 'Primera reseña' });
+    const first = await postReview(token, {
+      rating: 5,
+      comment: 'Primera reseña',
+      photo: photoBuffer('image/png'),
+    });
     expect(first.status).toBe(201);
 
-    const second = await request(app)
-      .post(`/api/products/${productId}/reviews`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ rating: 1, comment: 'Segunda reseña' });
-
+    const second = await postReview(token, { rating: 1, photo: photoBuffer('image/webp') });
     expect(second.status).toBe(409);
     expect(second.body.error).toContain('Ya reseñaste');
   });
@@ -190,19 +181,16 @@ describe('Reviews API', () => {
     const res = await request(app)
       .post('/api/products/999999/reviews')
       .set('Authorization', `Bearer ${token}`)
-      .send({ rating: 5 });
+      .field('rating', '5')
+      .attach('photo', photoBuffer('image/png').buffer, { filename: 'foto.png', contentType: 'image/png' });
 
     expect(res.status).toBe(404);
   });
 
   test('rating fuera de rango devuelve 400', async () => {
     const token = await tokenFor('cliente@techstore.com');
-    await buyProductAs(token);
 
-    const res = await request(app)
-      .post(`/api/products/${productId}/reviews`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ rating: 7 });
+    const res = await postReview(token, { rating: 7, photo: photoBuffer('image/png') });
 
     expect(res.status).toBe(400);
   });
@@ -210,27 +198,5 @@ describe('Reviews API', () => {
   test('listar reseñas de producto inexistente devuelve 404', async () => {
     const res = await request(app).get('/api/products/999999/reviews');
     expect(res.status).toBe(404);
-  });
-
-  test('un pedido sin user_id (venta a cliente sin cuenta) no puede reseñarse desde ninguna cuenta', async () => {
-    await registerGuestPurchase('confirmed');
-
-    const tokenA = await tokenFor('cliente-guest-a@techstore.com');
-    const resA = await request(app)
-      .post(`/api/products/${productId}/reviews`)
-      .set('Authorization', `Bearer ${tokenA}`)
-      .send({ rating: 5, comment: 'Quiero aprovechar la venta' });
-    expect(resA.status).toBe(403);
-
-    const tokenB = await tokenFor('cliente-guest-b@techstore.com');
-    const resB = await request(app)
-      .post(`/api/products/${productId}/reviews`)
-      .set('Authorization', `Bearer ${tokenB}`)
-      .send({ rating: 4 });
-    expect(resB.status).toBe(403);
-
-    const reviews = await request(app).get(`/api/products/${productId}/reviews`);
-    expect(reviews.status).toBe(200);
-    expect(reviews.body.ratingCount).toBe(0);
   });
 });

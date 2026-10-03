@@ -67,6 +67,31 @@ const Store = sequelize.define(
       allowNull: true,
       field: 'rejected_reason',
     },
+    planStatus: {
+      type: DataTypes.ENUM('active', 'paused', 'cancelled', 'expired'),
+      allowNull: false,
+      defaultValue: 'active',
+      field: 'plan_status',
+    },
+    planStartedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'plan_started_at',
+    },
+    planExpiresAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'plan_expires_at',
+    },
+    planTierId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'plan_tier_id',
+      references: {
+        model: 'plan_tiers',
+        key: 'id',
+      },
+    },
   },
   {
     tableName: 'stores',

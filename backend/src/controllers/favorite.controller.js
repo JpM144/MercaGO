@@ -1,5 +1,6 @@
 import db from '../models/index.js';
 import { toDetailJson } from './product.controller.js';
+import { activePlanWhere } from '../utils/plan.util.js';
 
 const PRODUCT_ATTRIBUTES = [
   'id',
@@ -25,12 +26,13 @@ export async function listFavorites(req, res, next) {
           as: 'product',
           attributes: PRODUCT_ATTRIBUTES,
           required: true,
+          where: { isActive: true },
           include: [
             {
               model: db.Store,
               as: 'store',
               attributes: ['id', 'name', 'slug'],
-              where: { status: 'approved' },
+              where: { status: 'approved', ...activePlanWhere() },
               required: true,
             },
             { model: db.Category, as: 'category', attributes: ['id', 'name', 'slug'] },

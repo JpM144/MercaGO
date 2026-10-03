@@ -28,14 +28,18 @@ export function fetchProductBySlug(slug) {
   return request(`/api/products/${slug}`);
 }
 
-export async function postReview({ token, productId, rating, comment }) {
+export async function postReview({ token, productId, rating, comment, photo }) {
+  const form = new FormData();
+  form.append('rating', String(rating));
+  if (comment) form.append('comment', comment);
+  form.append('photo', photo);
+
   const response = await fetch(`${API_URL}/api/products/${productId}/reviews`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ rating, comment }),
+    body: form,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {

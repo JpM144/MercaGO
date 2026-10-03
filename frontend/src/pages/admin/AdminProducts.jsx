@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { fetchCategories, fetchProducts } from '../../services/products.js';
-import { createProduct, deleteProduct, updateProduct } from '../../services/admin.js';
+import { Link } from 'react-router-dom';
+import { createProduct, fetchStoreCategories, listStoreAdminProducts, setProductActive, updateProduct } from '../../services/admin.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { formatPrice } from '../../utils/format.js';
 import Spinner from '../../components/Spinner.jsx';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import Notice from '../../components/Notice.jsx';
 
-const ADMIN_PAGE_SIZE = 50;
-
 function ProductForm({ product, categories, submitting, submitError, onSubmit, onCancel }) {
   const [name, setName] = useState(product?.name ?? '');
   const [slug, setSlug] = useState(product?.slug ?? '');
   const [description, setDescription] = useState(product?.description ?? '');
   const [price, setPrice] = useState(product != null ? String(product.price) : '');
+  const [cost, setCost] = useState(product != null ? String(product.cost ?? '') : '');
   const [stock, setStock] = useState(product != null ? String(product.stock) : '');
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '');
   const [categoryId, setCategoryId] = useState(
@@ -33,6 +32,10 @@ function ProductForm({ product, categories, submitting, submitError, onSubmit, o
     if (stock === '' || !Number.isInteger(stockNum) || stockNum < 0) {
       nextErrors.stock = 'Ingresá un stock entero mayor o igual a 0.';
     }
+    const costNum = Number(cost);
+    if (cost !== '' && (!Number.isFinite(costNum) || costNum < 0)) {
+      nextErrors.cost = 'Ingresá un costo mayor o igual a 0.';
+    }
     if (!categoryId) nextErrors.categoryId = 'Elegí una categoría.';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
@@ -42,6 +45,7 @@ function ProductForm({ product, categories, submitting, submitError, onSubmit, o
       slug: slug.trim() || undefined,
       description: description.trim() || undefined,
       price: priceNum,
+      cost: cost === '' ? undefined : costNum,
       stock: stockNum,
       imageUrl: imageUrl.trim() || null,
       categoryId: Number(categoryId),
@@ -118,6 +122,20 @@ function ProductForm({ product, categories, submitting, submitError, onSubmit, o
             onChange={(e) => setPrice(e.target.value)}
           />,
           errors.price,
+        )}
+        {field(
+          'cost',
+          'Costo',
+          <input
+            id="cost"
+            type="number"
+            step="0.01"
+            min="0"
+            className={inputClass}
+            value={cost}
+            onChange={(e) => setCost(e.target.value)}
+          />,
+          errors.cost,
         )}
         {field(
           'stock',
@@ -243,27 +261,28 @@ export default function AdminProducts() {
   const [formOpen, setFormOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [limitMessage, setLimitMessage] = useState('');
   const [notice, setNotice] = useState(null);
 
   const load = useCallback(async () => {
     setState({ loading: true, error: null });
     try {
-      const data = await fetchProducts({ search, limit: ADMIN_PAGE_SIZE });
+      const data = await listStoreAdminProducts(token, search.trim());
       setProducts(data.products);
       setState({ loading: false, error: null });
     } catch (error) {
       setState({ loading: false, error: error.message });
     }
-  }, [search]);
+  }, [token, search]);
 
   const loadCategories = useCallback(async () => {
     try {
-      const data = await fetchCategories();
+      const data = await fetchStoreCategories(token);
       setCategories(data.categories ?? []);
     } catch {
       setCategories([]);
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     load();
@@ -277,17 +296,20 @@ export default function AdminProducts() {
     setFormProduct(null);
     setFormOpen(true);
     setSubmitError('');
+    setLimitMessage('');
   };
 
   const openEdit = (product) => {
     setFormProduct(product);
     setFormOpen(true);
     setSubmitError('');
+    setLimitMessage('');
   };
 
   const handleSubmit = async (body) => {
     setSubmitting(true);
     setSubmitError('');
+    setLimitMessage('');
     try {
       if (formProduct) {
         await updateProduct(token, formProduct.id, body);
@@ -300,17 +322,35 @@ export default function AdminProducts() {
       setFormProduct(null);
       await load();
     } catch (error) {
-      setSubmitError(error.message);
+      if (error.status === 403) {
+        setLimitMessage(error.message);
+      } else {
+        setSubmitError(error.message);
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDelete = async (product) => {
-    if (!window.confirm(`¿Eliminar el producto "${product.name}"?`)) return;
+  const handleToggleActive = async (product) => {
+    const deactivating = product.isActive !== false;
+    if (
+      !window.confirm(
+        deactivating
+          ? `¿Desactivar el producto "${product.name}"? Dejará de verse en el catálogo público.`
+          : `¿Reactivar el producto "${product.name}"? Volverá a aparecer en el catálogo público.`,
+      )
+    ) {
+      return;
+    }
     try {
-      await deleteProduct(token, product.id);
-      setNotice({ type: 'success', text: `Producto "${product.name}" eliminado.` });
+      await setProductActive(token, product.id, !deactivating);
+      setNotice({
+        type: 'success',
+        text: deactivating
+          ? `Producto "${product.name}" desactivado.`
+          : `Producto "${product.name}" reactivado.`,
+      });
       await load();
     } catch (error) {
       setNotice({ type: 'error', text: error.message });
@@ -338,6 +378,21 @@ export default function AdminProducts() {
 
       {notice && <Notice type={notice.type}>{notice.text}</Notice>}
 
+      {limitMessage && (
+        <div className="grid gap-2 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+          <p className="font-semibold">No pudiste publicar el producto</p>
+          <p>{limitMessage}</p>
+          <p>
+            <Link
+              to="/admin/plan"
+              className="inline-block rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-amber-700"
+            >
+              Ir a &quot;Mi plan&quot; y solicitar un cambio
+            </Link>
+          </p>
+        </div>
+      )}
+
       {formOpen && (
         <ProductForm
           product={formProduct}
@@ -349,6 +404,7 @@ export default function AdminProducts() {
             setFormOpen(false);
             setFormProduct(null);
             setSubmitError('');
+            setLimitMessage('');
           }}
         />
       )}
@@ -387,6 +443,7 @@ export default function AdminProducts() {
                 <th className="px-4 py-3">Producto</th>
                 <th className="px-4 py-3">Categoría</th>
                 <th className="px-4 py-3">Precio</th>
+                <th className="px-4 py-3">Costo</th>
                 <th className="px-4 py-3">Stock</th>
                 <th className="px-4 py-3">Acciones</th>
               </tr>
@@ -400,9 +457,19 @@ export default function AdminProducts() {
                 </tr>
               )}
               {products.map((product) => (
-                <tr key={product.id} className="transition hover:bg-brand-50/50">
+                <tr
+                  key={product.id}
+                  className={`transition hover:bg-brand-50/50 ${
+                    product.isActive === false ? 'bg-amber-50/60' : ''
+                  }`}
+                >
                   <td className="px-4 py-3">
                     <span className="font-medium text-ink-900">{product.name}</span>
+                    {product.isActive === false && (
+                      <span className="ml-2 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                        Inactivo
+                      </span>
+                    )}
                     <span className="block text-xs text-ink-400">
                       #{product.id} · /{product.slug}
                     </span>
@@ -413,6 +480,7 @@ export default function AdminProducts() {
                   <td className="px-4 py-3 font-semibold text-ink-900">
                     {formatPrice(product.price)}
                   </td>
+                  <td className="px-4 py-3 text-ink-600">{formatPrice(product.cost ?? 0)}</td>
                   <td className="px-4 py-3">
                     <StockEditor
                       product={product}
@@ -430,10 +498,14 @@ export default function AdminProducts() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDelete(product)}
-                        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                        onClick={() => handleToggleActive(product)}
+                        className={
+                          product.isActive === false
+                            ? 'rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50'
+                            : 'rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50'
+                        }
                       >
-                        Eliminar
+                        {product.isActive === false ? 'Reactivar' : 'Desactivar'}
                       </button>
                     </div>
                   </td>

@@ -1,13 +1,14 @@
 import bcrypt from 'bcryptjs';
 import db from '../models/index.js';
 import { signToken } from '../utils/token.util.js';
+import { getEffectivePlanStatus } from '../utils/plan.util.js';
 
 const SALT_ROUNDS = 10;
 
 async function toPublicUser(user) {
   const store = await db.Store.findOne({
     where: { ownerUserId: user.id },
-    attributes: ['id', 'status', 'rejectedReason'],
+    attributes: ['id', 'status', 'rejectedReason', 'planStatus', 'planExpiresAt'],
   });
 
   const base = {
@@ -18,7 +19,11 @@ async function toPublicUser(user) {
   };
 
   if (store) {
+    const plan = getEffectivePlanStatus(store);
     base.storeStatus = store.status;
+    base.planStatus = plan.status;
+    base.planExpiringSoon = plan.expiringSoon;
+    base.planExpiresAt = store.planExpiresAt ?? null;
     if (store.status === 'rejected') {
       base.storeRejectedReason = store.rejectedReason;
     }

@@ -1,6 +1,8 @@
 import { Op, Sequelize } from 'sequelize';
 import db from '../models/index.js';
 import { slugify, uniqueSlug } from '../utils/slug.util.js';
+import { activePlanWhere } from '../utils/plan.util.js';
+import { checkProductLimit } from '../utils/planTier.util.js';
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
@@ -12,13 +14,19 @@ const ORDER_BY = {
   newest: [['createdAt', 'DESC']],
 };
 
-export function toProductJson(product) {
+export function toProductJson(product, { includeCost = false } = {}) {
   const json = product.get ? product.get({ plain: true }) : { ...product };
-  return {
+  const result = {
     ...json,
     price: Number(json.price),
     originalPrice: json.originalPrice == null ? null : Number(json.originalPrice),
   };
+  if (includeCost) {
+    result.cost = Number(json.cost ?? 0);
+  } else {
+    delete result.cost;
+  }
+  return result;
 }
 
 export function toDetailJson(product) {
@@ -46,19 +54,40 @@ export async function querySiteProducts({
   const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
   const limitNum = Math.min(MAX_LIMIT, Math.max(1, Number.parseInt(limit, 10) || DEFAULT_LIMIT));
 
-  const where = {};
-  const storeWhere = { status: 'approved' };
+  const where = { isActive: true };
+  const storeWhere = { status: 'approved', ...activePlanWhere() };
 
   if (onSale === 'true') {
     where[Op.and] = Sequelize.where(Sequelize.col('original_price'), Op.gt, Sequelize.col('price'));
   }
 
+  if (storeSlug) {
+    storeWhere.slug = storeSlug;
+  }
+
   if (category) {
-    const cat = await db.Category.findOne({ where: { slug: category } });
-    if (!cat) {
-      return { rows: [], count: 0, pageNum, limitNum };
+    if (storeSlug) {
+      // Catálogo de una tienda: el slug se resuelve dentro de esa tienda.
+      const store = await db.Store.findOne({ where: { slug: storeSlug }, attributes: ['id'] });
+      const cat = store
+        ? await db.Category.findOne({ where: { slug: category, storeId: store.id } })
+        : null;
+      if (!cat) {
+        return { rows: [], count: 0, pageNum, limitNum };
+      }
+      where.categoryId = cat.id;
+    } else {
+      // Catálogo global: al ser categorías privadas, el filtro matchea por NOMBRE
+      // y trae los productos de todas las tiendas que usan ese nombre.
+      const cats = await db.Category.findAll({
+        where: { name: { [Op.iLike]: String(category).trim() } },
+        attributes: ['id'],
+      });
+      if (cats.length === 0) {
+        return { rows: [], count: 0, pageNum, limitNum };
+      }
+      where.categoryId = { [Op.in]: cats.map((cat) => cat.id) };
     }
-    where.categoryId = cat.id;
   }
 
   if (search) {
@@ -66,10 +95,6 @@ export async function querySiteProducts({
       { name: { [Op.iLike]: `%${search}%` } },
       { description: { [Op.iLike]: `%${search}%` } },
     ];
-  }
-
-  if (storeSlug) {
-    storeWhere.slug = storeSlug;
   }
 
   if (maxPrice !== undefined && maxPrice !== null) {
@@ -134,7 +159,7 @@ export async function listProducts(req, res, next) {
 export async function getProductBySlug(req, res, next) {
   try {
     const product = await db.Product.findOne({
-      where: { slug: req.params.slug },
+      where: { slug: req.params.slug, isActive: true },
       include: [
         {
           model: db.Category,
@@ -145,7 +170,7 @@ export async function getProductBySlug(req, res, next) {
           model: db.Store,
           as: 'store',
           attributes: ['id', 'name', 'slug', 'whatsappNumber'],
-          where: { status: 'approved' },
+          where: { status: 'approved', ...activePlanWhere() },
         },
       ],
     });
@@ -156,7 +181,7 @@ export async function getProductBySlug(req, res, next) {
 
     const reviews = await db.Review.findAll({
       where: { productId: product.id },
-      attributes: ['id', 'rating', 'comment', 'created_at'],
+      attributes: ['id', 'rating', 'comment', 'photoUrl', 'created_at'],
       include: [{ model: db.User, as: 'user', attributes: ['id', 'name'] }],
       order: [['created_at', 'DESC']],
     });
@@ -204,6 +229,7 @@ export async function createProduct(req, res, next) {
       categoryId,
       original_price,
       originalPrice,
+      cost,
     } = req.body ?? {};
 
     const catId = category_id ?? categoryId;
@@ -222,6 +248,11 @@ export async function createProduct(req, res, next) {
     if (catId === undefined) {
       return res.status(400).json({ error: 'categoryId es obligatorio.' });
     }
+    const costProvided = cost !== undefined && cost !== null && cost !== '';
+    const costNum = costProvided ? Number(cost) : 0;
+    if (costProvided && (!Number.isFinite(costNum) || costNum < 0)) {
+      return res.status(400).json({ error: 'cost debe ser un número mayor o igual a 0.' });
+    }
 
     const originalRaw = original_price ?? originalPrice;
     let originalPriceNum = null;
@@ -239,9 +270,16 @@ export async function createProduct(req, res, next) {
       }
     }
 
-    const category = await db.Category.findByPk(catId);
+    const category = await db.Category.findOne({ where: { id: catId, storeId: req.store.id } });
     if (!category) {
-      return res.status(400).json({ error: 'La categoría indicada no existe.' });
+      return res
+        .status(400)
+        .json({ error: 'La categoría indicada no pertenece a tu tienda.' });
+    }
+
+    const limitError = await checkProductLimit(req.store);
+    if (limitError) {
+      return res.status(403).json({ error: limitError });
     }
 
     const finalSlug = slug
@@ -253,6 +291,7 @@ export async function createProduct(req, res, next) {
       slug: finalSlug,
       description: description ?? null,
       price: priceNum,
+      cost: costNum,
       stock: stockNum,
       imageUrl: imageUrl ?? image_url ?? null,
       categoryId: catId,
@@ -267,7 +306,7 @@ export async function createProduct(req, res, next) {
       ],
     });
 
-    return res.status(201).json({ product: toProductJson(created) });
+    return res.status(201).json({ product: toProductJson(created, { includeCost: true }) });
   } catch (error) {
     return next(error);
   }
@@ -289,6 +328,9 @@ export async function updateProduct(req, res, next) {
       categoryId,
       original_price,
       originalPrice,
+      is_active,
+      isActive,
+      cost,
     } = req.body ?? {};
 
     const fields = {};
@@ -338,16 +380,34 @@ export async function updateProduct(req, res, next) {
       }
       fields.stock = stockNum;
     }
+    if (cost !== undefined) {
+      const costNum = cost === null || cost === '' ? 0 : Number(cost);
+      if (!Number.isFinite(costNum) || costNum < 0) {
+        return res.status(400).json({ error: 'cost debe ser un número mayor o igual a 0.' });
+      }
+      fields.cost = costNum;
+    }
     if (image_url !== undefined || imageUrl !== undefined) {
       fields.imageUrl = imageUrl ?? image_url;
     }
     if (category_id !== undefined || categoryId !== undefined) {
       const catId = category_id ?? categoryId;
-      const category = await db.Category.findByPk(catId);
+      const category = await db.Category.findOne({
+        where: { id: catId, storeId: req.store.id },
+      });
       if (!category) {
-        return res.status(400).json({ error: 'La categoría indicada no existe.' });
+        return res
+          .status(400)
+          .json({ error: 'La categoría indicada no pertenece a tu tienda.' });
       }
       fields.categoryId = catId;
+    }
+    if (is_active !== undefined || isActive !== undefined) {
+      const isActiveValue = is_active ?? isActive;
+      if (typeof isActiveValue !== 'boolean') {
+        return res.status(400).json({ error: 'is_active debe ser un booleano.' });
+      }
+      fields.isActive = isActiveValue;
     }
 
     await product.update(fields);
@@ -359,7 +419,7 @@ export async function updateProduct(req, res, next) {
       ],
     });
 
-    return res.json({ product: toProductJson(updated) });
+    return res.json({ product: toProductJson(updated, { includeCost: true }) });
   } catch (error) {
     return next(error);
   }
@@ -367,20 +427,47 @@ export async function updateProduct(req, res, next) {
 
 export async function deleteProduct(req, res, next) {
   try {
-    const product = req.product;
+    await req.product.update({ isActive: false });
+    return res.status(204).send();
+  } catch (error) {
+    return next(error);
+  }
+}
 
-    try {
-      await product.destroy();
-    } catch (error) {
-      if (error.original?.code === '23503') {
-        return res.status(409).json({
-          error: 'No se puede eliminar el producto porque está referenciado en pedidos.',
-        });
-      }
-      throw error;
+export async function listStoreAdminProducts(req, res, next) {
+  try {
+    const { search, category } = req.query;
+    const where = { storeId: req.store.id };
+
+    if (category) {
+      const cat = await db.Category.findOne({
+        where: { slug: category, storeId: req.store.id },
+      });
+      if (cat) where.categoryId = cat.id;
     }
 
-    return res.status(204).send();
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.iLike]: `%${search}%` } },
+        { description: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    const products = await db.Product.findAll({
+      where,
+      order: [
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
+      ],
+      include: [
+        { model: db.Category, as: 'category', attributes: ['id', 'name', 'slug'] },
+        { model: db.Store, as: 'store', attributes: ['id', 'name', 'slug'] },
+      ],
+    });
+
+    return res.json({
+      products: products.map((product) => toProductJson(product, { includeCost: true })),
+    });
   } catch (error) {
     return next(error);
   }
