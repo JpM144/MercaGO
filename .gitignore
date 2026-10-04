@@ -9,6 +9,9 @@ node_modules/
 dist/
 build/
 
+# Archivos subidos por usuarios (fotos de reseñas, comprobantes de plan)
+backend/uploads/
+
 # Logs
 *.log
 npm-debug.log*
