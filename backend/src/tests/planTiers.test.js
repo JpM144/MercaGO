@@ -473,6 +473,30 @@ describe('Niveles de plan y solicitudes de cambio', () => {
     // rechazo tiene que borrarlo. Si la ruta se resuelve con process.cwd() en vez de
     // con la del módulo, el unlink apunta a otro lado y el huérfano queda en disco
     // (el .catch(() => {}) lo oculta), por eso se compara el contenido de la carpeta.
+    test('si el tierId es inválido, el comprobante se borra de verdad', async () => {
+      const { owner } = await createStore('huerfano-z@techstore.com', basico.id);
+      const token = await loginToken(owner.email);
+      const before = receiptsOnDisk();
+
+      const res = await postChangeRequest(token, 'no-es-un-numero', receiptFile('png'));
+
+      expect(res.status).toBe(400);
+      expect(await db.PlanChangeRequest.count()).toBe(0);
+      expect(receiptsOnDisk()).toEqual(before);
+    });
+
+    test('si falta el tierId, el comprobante se borra de verdad', async () => {
+      const { owner } = await createStore('huerfano-y@techstore.com', basico.id);
+      const token = await loginToken(owner.email);
+      const before = receiptsOnDisk();
+
+      const res = await postChangeRequest(token, undefined, receiptFile('png'));
+
+      expect(res.status).toBe(400);
+      expect(await db.PlanChangeRequest.count()).toBe(0);
+      expect(receiptsOnDisk()).toEqual(before);
+    });
+
     test('si el plan solicitado no existe, el comprobante se borra de verdad', async () => {
       const { owner } = await createStore('huerfano-a@techstore.com', basico.id);
       const token = await loginToken(owner.email);

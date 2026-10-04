@@ -65,11 +65,20 @@ function toRequestJson(request) {
 
 export async function createPlanChangeRequest(req, res, next) {
   try {
+    // multer ya escribió el comprobante en disco antes de llegar acá, así que desde este
+    // punto cualquier rechazo tiene que borrarlo o queda un archivo huérfano.
+    // La ruta usa la misma constante que el destino de multer (resuelta con import.meta.url),
+    // no process.cwd(), que duplicaba el 'backend' al correr desde backend/.
+    const receiptPath = req.file ? path.join(PLAN_RECEIPTS_DIR, req.file.filename) : null;
+    const discardReceipt = () =>
+      receiptPath ? fs.unlink(receiptPath).catch(() => {}) : Promise.resolve();
+
     const requestedTierId = Number(
       req.body?.requested_tier_id ?? req.body?.requestedTierId ?? req.body?.tier_id ?? req.body?.tierId,
     );
 
     if (!Number.isInteger(requestedTierId)) {
+      await discardReceipt();
       return res.status(400).json({ error: 'requested_tier_id es obligatorio.' });
     }
 
@@ -81,26 +90,22 @@ export async function createPlanChangeRequest(req, res, next) {
       });
     }
 
-    // La misma constante que usa multer para guardar el archivo: resolverla con
-    // process.cwd() duplicaba el 'backend' cuando el proceso corre desde backend/.
-    const receiptPath = path.join(PLAN_RECEIPTS_DIR, req.file.filename);
-
     try {
       const tier = await db.PlanTier.findByPk(requestedTierId);
       if (!tier) {
-        await fs.unlink(receiptPath).catch(() => {});
+        await discardReceipt();
         return res.status(404).json({ error: 'El plan solicitado no existe.' });
       }
 
       const currentTier = await getStorePlanTier(req.store);
       if (currentTier && currentTier.id === tier.id) {
-        await fs.unlink(receiptPath).catch(() => {});
+        await discardReceipt();
         return res.status(409).json({ error: `Ya estás en el plan ${tier.name}.` });
       }
 
       const pending = await findPendingPlanChangeRequest(req.store.id);
       if (pending) {
-        await fs.unlink(receiptPath).catch(() => {});
+        await discardReceipt();
         return res.status(409).json({
           error: 'Ya tenés una solicitud de cambio de plan pendiente de revisión.',
           request: toRequestJson(await findRequest(pending.id)),
@@ -120,7 +125,7 @@ export async function createPlanChangeRequest(req, res, next) {
         request: toRequestJson(await findRequest(request.id)),
       });
     } catch (error) {
-      await fs.unlink(receiptPath).catch(() => {});
+      await discardReceipt();
       return next(error);
     }
   } catch (error) {
