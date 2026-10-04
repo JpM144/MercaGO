@@ -71,10 +71,16 @@ test('público + formato estructurado: parsea suggestedDescription y suggestedCa
 });
 
 test('no requiere token: el endpoint es público (200 sin Authorization)', async () => {
-  scriptClient([finalMessage('{"suggestedDescription":"Tienda dedicada a la música y el audio de alta fidelidad.","suggestedCategory":"Audio"}')]);
-  const res = await request(app).post('/api/store-application-assistant/chat').send({
-    messages: [{ role: 'user', content: 'vivo de la música' }],
-  });
+  scriptClient([
+    finalMessage(
+      '{"suggestedDescription":"Tienda dedicada a la música y el audio de alta fidelidad.","suggestedCategory":"Audio"}',
+    ),
+  ]);
+  const res = await request(app)
+    .post('/api/store-application-assistant/chat')
+    .send({
+      messages: [{ role: 'user', content: 'vivo de la música' }],
+    });
   expect(res.status).toBe(200);
   expect(res.body.suggestedCategory).toBe('Audio');
 });
@@ -105,7 +111,9 @@ test('tolera JSON dentro de bloque con texto adicional y conserva el historial d
 
 test('categoría inventada que no está en el catálogo se descarta (null) pero conserva la descripción', async () => {
   scriptClient([
-    finalMessage('{"suggestedDescription":"Ropa y accesorios electrónicos.","suggestedCategory":"Moda"}'),
+    finalMessage(
+      '{"suggestedDescription":"Ropa y accesorios electrónicos.","suggestedCategory":"Moda"}',
+    ),
   ]);
   const res = await chat([{ role: 'user', content: 'mi tienda es de ropa y gadgets' }]);
   expect(res.status).toBe(200);

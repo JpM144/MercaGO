@@ -1,11 +1,7 @@
 import { Op } from 'sequelize';
 import db from '../models/index.js';
 import { PLAN_STATUSES, getEffectivePlanStatus } from '../utils/plan.util.js';
-import {
-  AUDIT_ACTIONS,
-  AUDIT_ACTION_LABELS,
-  buildAuditSummary,
-} from '../utils/audit.util.js';
+import { AUDIT_ACTIONS, AUDIT_ACTION_LABELS, buildAuditSummary } from '../utils/audit.util.js';
 
 function toPlanStoreJson(store, plan) {
   return {
@@ -31,7 +27,16 @@ async function findPlanStore(id) {
 export async function listStores(req, res, next) {
   try {
     const stores = await db.Store.findAll({
-      attributes: ['id', 'name', 'slug', 'status', 'planStatus', 'planStartedAt', 'planExpiresAt', 'createdAt'],
+      attributes: [
+        'id',
+        'name',
+        'slug',
+        'status',
+        'planStatus',
+        'planStartedAt',
+        'planExpiresAt',
+        'createdAt',
+      ],
       include: [{ model: db.User, as: 'owner', attributes: ['id', 'name', 'email'] }],
       order: [['createdAt', 'DESC']],
     });

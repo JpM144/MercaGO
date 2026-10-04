@@ -1,6 +1,10 @@
 import { Op } from 'sequelize';
 import db from '../models/index.js';
-import { getAgentClient, setClientFactoryForTests, NVIDIA_MODEL } from '../services/nvidia.client.js';
+import {
+  getAgentClient,
+  setClientFactoryForTests,
+  NVIDIA_MODEL,
+} from '../services/nvidia.client.js';
 import { ORDER_INCLUDE, toOrderJson } from './order.controller.js';
 
 const MAX_TOOL_ROUNDS = 4;
@@ -60,10 +64,7 @@ function buildSystemPrompt(store, products) {
   const lines =
     products.length > 0
       ? products
-          .map(
-            (p) =>
-              `- #${p.id} "${p.name}" — $${Number(p.price)} (stock: ${p.stock})`,
-          )
+          .map((p) => `- #${p.id} "${p.name}" — $${Number(p.price)} (stock: ${p.stock})`)
           .join('\n')
       : '(El catálogo de esta tienda está vacío.)';
 
@@ -96,11 +97,7 @@ function resolveItem(raw, catalog) {
   if (!Number.isInteger(quantity) || quantity <= 0) {
     return { ok: false, error: 'Cada ítem debe tener una cantidad entera mayor a cero.' };
   }
-  if (
-    key === undefined ||
-    key === null ||
-    (typeof key === 'string' && key.trim() === '')
-  ) {
+  if (key === undefined || key === null || (typeof key === 'string' && key.trim() === '')) {
     return { ok: false, error: 'Cada ítem debe indicar product_name_or_id.' };
   }
 
@@ -108,7 +105,10 @@ function resolveItem(raw, catalog) {
     const id = Number(String(key).trim());
     const found = catalog.filter((p) => p.id === id);
     if (found.length === 0) {
-      return { ok: false, error: `No existe un producto con id #${id} en el catálogo de esta tienda.` };
+      return {
+        ok: false,
+        error: `No existe un producto con id #${id} en el catálogo de esta tienda.`,
+      };
     }
     return { ok: true, product: found[0], quantity };
   }
@@ -212,9 +212,8 @@ async function handleRegisterSale(args, storeId) {
       }
 
       const total =
-        Math.round(
-          locked.reduce((sum, r) => sum + Number(r.product.price) * r.quantity, 0) * 100,
-        ) / 100;
+        Math.round(locked.reduce((sum, r) => sum + Number(r.product.price) * r.quantity, 0) * 100) /
+        100;
 
       const created = await db.Order.create(
         { userId, status: 'confirmed', total, customerName, customerContact },

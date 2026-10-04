@@ -97,7 +97,10 @@ describe('Auditoría de acciones admin/super_admin', () => {
   test('rechazar solicitud escribe el log con el motivo en details', async () => {
     const superToken = await tokenFor('aud-super2@techstore.com', 'super_admin');
     const applicationId = await applyGetId(
-      applyPayload({ slug: 'tienda-aud-rechazo', owner: { ...applyPayload().owner, email: 'aud-prospect2@techstore.com' } }),
+      applyPayload({
+        slug: 'tienda-aud-rechazo',
+        owner: { ...applyPayload().owner, email: 'aud-prospect2@techstore.com' },
+      }),
     );
 
     const reject = await request(app)
@@ -121,7 +124,10 @@ describe('Auditoría de acciones admin/super_admin', () => {
   test('pausar, reactivar y cancelar tienda escriben sus logs con el actor correcto', async () => {
     const approverToken = await tokenFor('aud-aprov@techstore.com', 'super_admin');
     const applicationId = await applyGetId(
-      applyPayload({ slug: 'tienda-aud-plan', owner: { ...applyPayload().owner, email: 'aud-prospect3@techstore.com' } }),
+      applyPayload({
+        slug: 'tienda-aud-plan',
+        owner: { ...applyPayload().owner, email: 'aud-prospect3@techstore.com' },
+      }),
     );
     await approve(approverToken, applicationId);
     const store = await db.Store.findOne({ where: { slug: 'tienda-aud-plan' } });
@@ -171,7 +177,10 @@ describe('Auditoría de acciones admin/super_admin', () => {
     const superToken = await tokenFor('aud-filtro@techstore.com', 'super_admin');
 
     const appPause = await applyGetId(
-      applyPayload({ slug: 'aud-filtro-1', owner: { ...applyPayload().owner, email: 'aud-f1@techstore.com' } }),
+      applyPayload({
+        slug: 'aud-filtro-1',
+        owner: { ...applyPayload().owner, email: 'aud-f1@techstore.com' },
+      }),
     );
     await approve(superToken, appPause);
     const store1 = await db.Store.findOne({ where: { slug: 'aud-filtro-1' } });
@@ -180,7 +189,10 @@ describe('Auditoría de acciones admin/super_admin', () => {
       .set('Authorization', `Bearer ${superToken}`);
 
     const appReject = await applyGetId(
-      applyPayload({ slug: 'aud-filtro-2', owner: { ...applyPayload().owner, email: 'aud-f2@techstore.com' } }),
+      applyPayload({
+        slug: 'aud-filtro-2',
+        owner: { ...applyPayload().owner, email: 'aud-f2@techstore.com' },
+      }),
     );
     await request(app)
       .put(`/api/admin/store-applications/${appReject}/reject`)
@@ -217,7 +229,10 @@ describe('Auditoría de acciones admin/super_admin', () => {
     const future = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
 
     const appA = await applyGetId(
-      applyPayload({ slug: 'aud-fecha-1', owner: { ...applyPayload().owner, email: 'aud-d1@techstore.com' } }),
+      applyPayload({
+        slug: 'aud-fecha-1',
+        owner: { ...applyPayload().owner, email: 'aud-d1@techstore.com' },
+      }),
     );
     await approve(superToken, appA);
     const storeA = await db.Store.findOne({ where: { slug: 'aud-fecha-1' } });
@@ -226,23 +241,32 @@ describe('Auditoría de acciones admin/super_admin', () => {
       .set('Authorization', `Bearer ${superToken}`);
 
     const appB = await applyGetId(
-      applyPayload({ slug: 'aud-fecha-2', owner: { ...applyPayload().owner, email: 'aud-d2@techstore.com' } }),
+      applyPayload({
+        slug: 'aud-fecha-2',
+        owner: { ...applyPayload().owner, email: 'aud-d2@techstore.com' },
+      }),
     );
     await approve(superToken, appB);
 
     const rangeOk = await request(app)
-      .get(`/api/super-admin/audit-log?from=${encodeURIComponent(before)}&to=${encodeURIComponent(after)}`)
+      .get(
+        `/api/super-admin/audit-log?from=${encodeURIComponent(before)}&to=${encodeURIComponent(after)}`,
+      )
       .set('Authorization', `Bearer ${superToken}`);
     expect(rangeOk.status).toBe(200);
     expect(rangeOk.body.logs).toHaveLength(3);
 
     const noMatch = await request(app)
-      .get(`/api/super-admin/audit-log?from=${encodeURIComponent(future)}&to=${encodeURIComponent(future)}`)
+      .get(
+        `/api/super-admin/audit-log?from=${encodeURIComponent(future)}&to=${encodeURIComponent(future)}`,
+      )
       .set('Authorization', `Bearer ${superToken}`);
     expect(noMatch.body.logs).toHaveLength(0);
 
     const beforeAll = await request(app)
-      .get(`/api/super-admin/audit-log?from=${encodeURIComponent(oldDay)}&to=${encodeURIComponent(oldDay)}`)
+      .get(
+        `/api/super-admin/audit-log?from=${encodeURIComponent(oldDay)}&to=${encodeURIComponent(oldDay)}`,
+      )
       .set('Authorization', `Bearer ${superToken}`);
     expect(beforeAll.body.logs).toHaveLength(0);
   });

@@ -91,11 +91,31 @@ export const FIVE_MB = 5 * 1024 * 1024;
 
 function receiptFile(kind = 'png') {
   const files = {
-    png: { buffer: Buffer.from('PNG-COMPROBANTE'), filename: 'comprobante.png', contentType: 'image/png' },
-    jpg: { buffer: Buffer.from('JPG-COMPROBANTE'), filename: 'comprobante.jpg', contentType: 'image/jpeg' },
-    webp: { buffer: Buffer.from('RIFF-WEBP-COMPROBANTE'), filename: 'comprobante.webp', contentType: 'image/webp' },
-    pdf: { buffer: Buffer.from('%PDF-1.4 comprobante'), filename: 'comprobante.pdf', contentType: 'application/pdf' },
-    txt: { buffer: Buffer.from('texto plano'), filename: 'comprobante.txt', contentType: 'text/plain' },
+    png: {
+      buffer: Buffer.from('PNG-COMPROBANTE'),
+      filename: 'comprobante.png',
+      contentType: 'image/png',
+    },
+    jpg: {
+      buffer: Buffer.from('JPG-COMPROBANTE'),
+      filename: 'comprobante.jpg',
+      contentType: 'image/jpeg',
+    },
+    webp: {
+      buffer: Buffer.from('RIFF-WEBP-COMPROBANTE'),
+      filename: 'comprobante.webp',
+      contentType: 'image/webp',
+    },
+    pdf: {
+      buffer: Buffer.from('%PDF-1.4 comprobante'),
+      filename: 'comprobante.pdf',
+      contentType: 'application/pdf',
+    },
+    txt: {
+      buffer: Buffer.from('texto plano'),
+      filename: 'comprobante.txt',
+      contentType: 'text/plain',
+    },
   };
   return files[kind] ?? files.png;
 }
@@ -204,9 +224,7 @@ describe('Niveles de plan y solicitudes de cambio', () => {
         .set('Authorization', `Bearer ${token}`)
         .send(productPayload(categoryId, 'Producto B'));
       expect(permitido.status).toBe(201);
-      expect(
-        await db.Product.count({ where: { storeId: store.id, isActive: true } }),
-      ).toBe(20);
+      expect(await db.Product.count({ where: { storeId: store.id, isActive: true } })).toBe(20);
     });
 
     test('el plan Estándar permite 50 productos y el Premium no limita', async () => {
@@ -248,7 +266,12 @@ describe('Niveles de plan y solicitudes de cambio', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.tier).toMatchObject({ id: basico.id, name: 'Básico', price: 50000, productLimit: 20 });
+      expect(res.body.tier).toMatchObject({
+        id: basico.id,
+        name: 'Básico',
+        price: 50000,
+        productLimit: 20,
+      });
       expect(res.body.activeProducts).toBe(20);
       expect(res.body.productLimit).toBe(20);
       expect(res.body.productLimitReached).toBe(true);
@@ -408,7 +431,11 @@ describe('Niveles de plan y solicitudes de cambio', () => {
     test('un comprobante de más de 5 MB devuelve 400', async () => {
       const { owner } = await createStore('rcp-d@techstore.com', basico.id);
       const token = await loginToken(owner.email);
-      const grande = { buffer: Buffer.alloc(FIVE_MB + 1024), filename: 'grande.png', contentType: 'image/png' };
+      const grande = {
+        buffer: Buffer.alloc(FIVE_MB + 1024),
+        filename: 'grande.png',
+        contentType: 'image/png',
+      };
 
       const res = await postChangeRequest(token, premium.id, grande);
 

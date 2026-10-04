@@ -22,7 +22,8 @@ export function tierLimitMessage(tierName, limit) {
 }
 
 export async function getStorePlanTier(storeOrId) {
-  const storeId = typeof storeOrId === 'object' && storeOrId !== null ? storeOrId.planTierId : storeOrId;
+  const storeId =
+    typeof storeOrId === 'object' && storeOrId !== null ? storeOrId.planTierId : storeOrId;
   if (!storeId) return null;
   return db.PlanTier.findByPk(storeId);
 }

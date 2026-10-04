@@ -52,9 +52,33 @@ async function seedStores() {
 
   [productA1, productA2, productB1] = await db.Product.bulkCreate(
     [
-      { name: 'Prod A1', slug: 'prod-a1', price: 100, cost: 60, stock: 50, categoryId: categoryA.id, storeId: storeA.id },
-      { name: 'Prod A2', slug: 'prod-a2', price: 50, cost: 30, stock: 50, categoryId: categoryA.id, storeId: storeA.id },
-      { name: 'Prod B1', slug: 'prod-b1', price: 200, cost: 150, stock: 50, categoryId: categoryB.id, storeId: storeB.id },
+      {
+        name: 'Prod A1',
+        slug: 'prod-a1',
+        price: 100,
+        cost: 60,
+        stock: 50,
+        categoryId: categoryA.id,
+        storeId: storeA.id,
+      },
+      {
+        name: 'Prod A2',
+        slug: 'prod-a2',
+        price: 50,
+        cost: 30,
+        stock: 50,
+        categoryId: categoryA.id,
+        storeId: storeA.id,
+      },
+      {
+        name: 'Prod B1',
+        slug: 'prod-b1',
+        price: 200,
+        cost: 150,
+        stock: 50,
+        categoryId: categoryB.id,
+        storeId: storeB.id,
+      },
     ],
     { returning: true },
   );
@@ -165,7 +189,14 @@ describe('Store Reports API (informes del store_admin)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.products).toEqual([]);
-    expect(res.body.totals).toEqual({ orders: 0, items: 0, quantity: 0, revenue: 0, cost: 0, profit: 0 });
+    expect(res.body.totals).toEqual({
+      orders: 0,
+      items: 0,
+      quantity: 0,
+      revenue: 0,
+      cost: 0,
+      profit: 0,
+    });
   });
 
   test('aislamiento entre tiendas: cada store_admin solo ve sus ventas', async () => {
@@ -192,7 +223,12 @@ describe('Store Reports API (informes del store_admin)', () => {
       .set('Authorization', `Bearer ${tokenB}`)
       .query({ period: 'daily', date: '2026-09-10' });
     expect(reportB.body.products.map((p) => p.productId)).toEqual([productB1.id]);
-    expect(reportB.body.totals).toMatchObject({ quantity: 3, revenue: 600, cost: 450, profit: 150 });
+    expect(reportB.body.totals).toMatchObject({
+      quantity: 3,
+      revenue: 600,
+      cost: 450,
+      profit: 150,
+    });
   });
 
   test('informe semanal: la semana que contiene la fecha (lunes a domingo)', async () => {
@@ -282,7 +318,9 @@ describe('Store Reports API (informes del store_admin)', () => {
   test('top-products: ranking por promedio mensual de mayor a menor (default 6 meses)', async () => {
     const { from } = getTopProductsWindow(6);
     const anchor = new Date(from.getTime() + 3 * 24 * 60 * 60 * 1000);
-    await createOrderAt(anchor, [{ productId: productA1.id, quantity: 12, unitPrice: 100, unitCost: 60 }]);
+    await createOrderAt(anchor, [
+      { productId: productA1.id, quantity: 12, unitPrice: 100, unitCost: 60 },
+    ]);
     await createOrderAt(new Date(anchor.getTime() + 24 * 60 * 60 * 1000), [
       { productId: productA2.id, quantity: 3, unitPrice: 50, unitCost: 30 },
     ]);
@@ -306,8 +344,12 @@ describe('Store Reports API (informes del store_admin)', () => {
   test('top-products: por defecto excluye ventas de la otra tienda y valida months', async () => {
     const { from } = getTopProductsWindow(12);
     const anchor = new Date(from.getTime() + 5 * 24 * 60 * 60 * 1000);
-    await createOrderAt(anchor, [{ productId: productA1.id, quantity: 6, unitPrice: 100, unitCost: 60 }]);
-    await createOrderAt(anchor, [{ productId: productB1.id, quantity: 600, unitPrice: 200, unitCost: 150 }]);
+    await createOrderAt(anchor, [
+      { productId: productA1.id, quantity: 6, unitPrice: 100, unitCost: 60 },
+    ]);
+    await createOrderAt(anchor, [
+      { productId: productB1.id, quantity: 600, unitPrice: 200, unitCost: 150 },
+    ]);
 
     const tokenA = await storeAdminToken('rep-owner-a@techstore.com');
 
@@ -379,7 +421,13 @@ describe('Store Reports API (informes del store_admin)', () => {
       .get('/api/store-admin/reports')
       .set('Authorization', `Bearer ${tokenA}`)
       .query({ period: 'daily', date: '2026-09-10' });
-    expect(daily.body.totals).toMatchObject({ orders: 1, quantity: 1, revenue: 100, cost: 60, profit: 40 });
+    expect(daily.body.totals).toMatchObject({
+      orders: 1,
+      quantity: 1,
+      revenue: 100,
+      cost: 60,
+      profit: 40,
+    });
 
     const ts = await request(app)
       .get('/api/store-admin/reports/timeseries')

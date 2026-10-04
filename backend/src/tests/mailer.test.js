@@ -227,7 +227,9 @@ describe('Notificaciones por correo (Gmail SMTP)', () => {
         planTierId: basico.id,
       });
 
-      const login = await request(app).post('/api/auth/login').send({ email, password: 'secret123' });
+      const login = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password: 'secret123' });
       const created = await request(app)
         .post('/api/store-admin/plan-change-requests')
         .set('Authorization', `Bearer ${login.body.token}`)
@@ -260,7 +262,9 @@ describe('Notificaciones por correo (Gmail SMTP)', () => {
       expect(mail.text).toContain('Tienda Plan');
       expect(mail.text).toContain('Plan actual: Premium');
       expect(mail.text).toContain('/tienda/tienda-planera');
-      expect(mail.text).toContain('Ya registramos el comprobante de la transferencia que adjuntaste');
+      expect(mail.text).toContain(
+        'Ya registramos el comprobante de la transferencia que adjuntaste',
+      );
       expect(mail.text).not.toContain('Motivo del rechazo');
     });
 

@@ -47,7 +47,11 @@ async function seed() {
     { returning: true },
   );
 
-  const catA = await db.Category.create({ name: 'Celulares', slug: 'celulares', storeId: storeA.id });
+  const catA = await db.Category.create({
+    name: 'Celulares',
+    slug: 'celulares',
+    storeId: storeA.id,
+  });
   await db.Product.create({
     name: 'Producto A',
     slug: 'prod-a',
@@ -341,7 +345,9 @@ describe('categorías privadas por tienda', () => {
     expect(slugs).toContain('prod-a-celular');
     expect(slugs).toContain('prod-b-celular');
 
-    const caseInsensitive = await request(app).get('/api/products').query({ category: 'CELULARES' });
+    const caseInsensitive = await request(app)
+      .get('/api/products')
+      .query({ category: 'CELULARES' });
     expect(caseInsensitive.body.products.map((p) => p.slug).sort()).toEqual(slugs.sort());
   });
 

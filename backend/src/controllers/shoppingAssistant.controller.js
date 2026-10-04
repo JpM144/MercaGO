@@ -1,4 +1,8 @@
-import { getAgentClient, setClientFactoryForTests, NVIDIA_MODEL } from '../services/nvidia.client.js';
+import {
+  getAgentClient,
+  setClientFactoryForTests,
+  NVIDIA_MODEL,
+} from '../services/nvidia.client.js';
 import { querySiteProducts, toProductJson } from './product.controller.js';
 
 const MAX_TOOL_ROUNDS = 4;
@@ -19,7 +23,8 @@ const SEARCH_PRODUCTS_TOOL = {
       properties: {
         query: {
           type: 'string',
-          description: 'Términos de búsqueda descriptos por el cliente (ej. "auriculares inalámbricos").',
+          description:
+            'Términos de búsqueda descriptos por el cliente (ej. "auriculares inalámbricos").',
         },
         category: {
           type: 'string',
@@ -72,9 +77,37 @@ function productSummary(product) {
 }
 
 const STOPWORDS = new Set([
-  'a', 'al', 'ante', 'bien', 'con', 'de', 'del', 'el', 'en', 'es', 'la',
-  'las', 'los', 'mas', 'muy', 'no', 'o', 'para', 'pero', 'por', 'que',
-  'quiero', 'queria', 'sean', 'ser', 'su', 'una', 'uno', 'un', 'us', 'y',
+  'a',
+  'al',
+  'ante',
+  'bien',
+  'con',
+  'de',
+  'del',
+  'el',
+  'en',
+  'es',
+  'la',
+  'las',
+  'los',
+  'mas',
+  'muy',
+  'no',
+  'o',
+  'para',
+  'pero',
+  'por',
+  'que',
+  'quiero',
+  'queria',
+  'sean',
+  'ser',
+  'su',
+  'una',
+  'uno',
+  'un',
+  'us',
+  'y',
 ]);
 
 async function executeSearch(args = {}) {

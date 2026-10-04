@@ -23,7 +23,12 @@ async function seedCatalog() {
     { returning: true },
   );
   const pendingAdmin = await db.User.create(
-    { name: 'Dueño Pendiente', email: 'sa-pendiente@techstore.com', passwordHash, role: 'store_admin' },
+    {
+      name: 'Dueño Pendiente',
+      email: 'sa-pendiente@techstore.com',
+      passwordHash,
+      role: 'store_admin',
+    },
     { returning: true },
   );
 
@@ -69,23 +74,58 @@ async function seedCatalog() {
 
   [auricularesX, mouseGamer] = await db.Product.bulkCreate(
     [
-      { name: 'Auriculares Bluetooth X', slug: 'auriculares-bluetooth-x', price: 45, stock: 10, categoryId: audio.id, storeId: storeOne.id },
-      { name: 'Mouse Gamer', slug: 'mouse-gamer', price: 60, stock: 8, categoryId: accesorios.id, storeId: storeOne.id },
+      {
+        name: 'Auriculares Bluetooth X',
+        slug: 'auriculares-bluetooth-x',
+        price: 45,
+        stock: 10,
+        categoryId: audio.id,
+        storeId: storeOne.id,
+      },
+      {
+        name: 'Mouse Gamer',
+        slug: 'mouse-gamer',
+        price: 60,
+        stock: 8,
+        categoryId: accesorios.id,
+        storeId: storeOne.id,
+      },
     ],
     { returning: true },
   );
   [auricularesY] = await db.Product.bulkCreate(
     [
-      { name: 'Auriculares Over-Ear Y', slug: 'auriculares-over-ear-y', price: 120, stock: 5, categoryId: audio.id, storeId: storeTwo.id },
+      {
+        name: 'Auriculares Over-Ear Y',
+        slug: 'auriculares-over-ear-y',
+        price: 120,
+        stock: 5,
+        categoryId: audio.id,
+        storeId: storeTwo.id,
+      },
     ],
     { returning: true },
   );
   await db.Product.bulkCreate([
-    { name: 'Teclado Mecanico', slug: 'teclado-mecanico', price: 80, stock: 6, categoryId: accesorios.id, storeId: storeTwo.id },
+    {
+      name: 'Teclado Mecanico',
+      slug: 'teclado-mecanico',
+      price: 80,
+      stock: 6,
+      categoryId: accesorios.id,
+      storeId: storeTwo.id,
+    },
   ]);
   [auricularesProhibidos] = await db.Product.bulkCreate(
     [
-      { name: 'Auriculares Prohibidos', slug: 'auriculares-prohibidos', price: 999, stock: 1, categoryId: audio.id, storeId: storePending.id },
+      {
+        name: 'Auriculares Prohibidos',
+        slug: 'auriculares-prohibidos',
+        price: 999,
+        stock: 1,
+        categoryId: audio.id,
+        storeId: storePending.id,
+      },
     ],
     { returning: true },
   );
@@ -182,7 +222,11 @@ test('sin resultados: el modelo comunica que no encontró nada en lugar de inven
 
 test('los filtros category, store_slug y maxPrice aplican a la búsqueda real', async () => {
   const create = scriptClient([
-    toolCallMessage('search_products', { query: 'auricular', store_slug: 'tienda-uno', maxPrice: 100 }),
+    toolCallMessage('search_products', {
+      query: 'auricular',
+      store_slug: 'tienda-uno',
+      maxPrice: 100,
+    }),
     finalMessage('En Tienda Uno hasta $100 tenés los Auriculares Bluetooth X.'),
   ]);
 

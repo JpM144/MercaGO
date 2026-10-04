@@ -118,7 +118,10 @@ describe('Reviews API', () => {
       .post(`/api/products/${productId}/reviews`)
       .set('Authorization', `Bearer ${token}`)
       .field('rating', '5')
-      .attach('photo', Buffer.from('texto plano'), { filename: 'nota.txt', contentType: 'text/plain' });
+      .attach('photo', Buffer.from('texto plano'), {
+        filename: 'nota.txt',
+        contentType: 'text/plain',
+      });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('JPG, PNG o WebP');
@@ -131,7 +134,10 @@ describe('Reviews API', () => {
       .post(`/api/products/${productId}/reviews`)
       .set('Authorization', `Bearer ${token}`)
       .field('rating', '5')
-      .attach('photo', Buffer.alloc(FIVE_MB + 1024), { filename: 'grande.png', contentType: 'image/png' });
+      .attach('photo', Buffer.alloc(FIVE_MB + 1024), {
+        filename: 'grande.png',
+        contentType: 'image/png',
+      });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('5 MB');
@@ -150,7 +156,9 @@ describe('Reviews API', () => {
     expect(detail.body.ratingCount).toBe(2);
     expect(detail.body.ratingAverage).toBe(3);
     expect(detail.body.reviews.length).toBe(2);
-    expect(detail.body.reviews.every((r) => r.photoUrl && r.photoUrl.startsWith('/uploads/reviews/'))).toBe(true);
+    expect(
+      detail.body.reviews.every((r) => r.photoUrl && r.photoUrl.startsWith('/uploads/reviews/')),
+    ).toBe(true);
 
     const list = await request(app).get(`/api/products/${productId}/reviews`);
     expect(list.status).toBe(200);
@@ -182,7 +190,10 @@ describe('Reviews API', () => {
       .post('/api/products/999999/reviews')
       .set('Authorization', `Bearer ${token}`)
       .field('rating', '5')
-      .attach('photo', photoBuffer('image/png').buffer, { filename: 'foto.png', contentType: 'image/png' });
+      .attach('photo', photoBuffer('image/png').buffer, {
+        filename: 'foto.png',
+        contentType: 'image/png',
+      });
 
     expect(res.status).toBe(404);
   });

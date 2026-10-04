@@ -29,11 +29,21 @@ async function seedCatalog() {
     { returning: true },
   );
   pendingAdmin = await db.User.create(
-    { name: 'Dueño Pendiente', email: 'sa-pendiente@techstore.com', passwordHash, role: 'store_admin' },
+    {
+      name: 'Dueño Pendiente',
+      email: 'sa-pendiente@techstore.com',
+      passwordHash,
+      role: 'store_admin',
+    },
     { returning: true },
   );
   customer = await db.User.create(
-    { name: 'Cliente Vinculado', email: 'cliente-vinculado@techstore.com', passwordHash, role: 'customer' },
+    {
+      name: 'Cliente Vinculado',
+      email: 'cliente-vinculado@techstore.com',
+      passwordHash,
+      role: 'customer',
+    },
     { returning: true },
   );
 
@@ -79,15 +89,55 @@ async function seedCatalog() {
 
   [iphone, cableOne, cableTwo, audifonos] = await db.Product.bulkCreate(
     [
-      { name: 'iPhone 15', slug: 'iphone-15', price: 1000, cost: 700, stock: 5, categoryId: celulares.id, storeId: storeOne.id },
-      { name: 'Cable Tipo C', slug: 'cable-tipo-c', price: 15, cost: 10, stock: 10, categoryId: accesorios.id, storeId: storeOne.id },
-      { name: 'Cable Tipo C', slug: 'cable-tipo-c-2', price: 18, stock: 7, categoryId: accesorios.id, storeId: storeOne.id },
-      { name: 'Audifonos', slug: 'audifonos', price: 80, cost: 50, stock: 2, categoryId: accesorios.id, storeId: storeOne.id },
+      {
+        name: 'iPhone 15',
+        slug: 'iphone-15',
+        price: 1000,
+        cost: 700,
+        stock: 5,
+        categoryId: celulares.id,
+        storeId: storeOne.id,
+      },
+      {
+        name: 'Cable Tipo C',
+        slug: 'cable-tipo-c',
+        price: 15,
+        cost: 10,
+        stock: 10,
+        categoryId: accesorios.id,
+        storeId: storeOne.id,
+      },
+      {
+        name: 'Cable Tipo C',
+        slug: 'cable-tipo-c-2',
+        price: 18,
+        stock: 7,
+        categoryId: accesorios.id,
+        storeId: storeOne.id,
+      },
+      {
+        name: 'Audifonos',
+        slug: 'audifonos',
+        price: 80,
+        cost: 50,
+        stock: 2,
+        categoryId: accesorios.id,
+        storeId: storeOne.id,
+      },
     ],
     { returning: true },
   );
   [iphonePro] = await db.Product.bulkCreate(
-    [{ name: 'iPhone 15 Pro', slug: 'iphone-15-pro', price: 1400, stock: 4, categoryId: celulares.id, storeId: storeTwo.id }],
+    [
+      {
+        name: 'iPhone 15 Pro',
+        slug: 'iphone-15-pro',
+        price: 1400,
+        stock: 4,
+        categoryId: celulares.id,
+        storeId: storeTwo.id,
+      },
+    ],
     { returning: true },
   );
 }
@@ -207,7 +257,8 @@ test('venta en dos turnos: el turno 1 propone sin tool call y el turno 2 con con
     finalMessage('Listo, registré la venta.'),
   ]);
 
-  const original = 'Vendí 2 iphone 15 y 1 cable de la tienda a Juan, su email es cliente-vinculado@techstore.com';
+  const original =
+    'Vendí 2 iphone 15 y 1 cable de la tienda a Juan, su email es cliente-vinculado@techstore.com';
   const { first, afterFirst, second: res } = await proposeAndConfirm(token, original);
 
   // Turno 1: propuesta en texto, sin ejecutar nada.
@@ -265,7 +316,11 @@ test('contacto sin cuenta existente: guarda datos sueltos con user_id null', asy
     finalMessage('Pedido creado.'),
   ]);
 
-  const { first, afterFirst, second: res } = await proposeAndConfirm(
+  const {
+    first,
+    afterFirst,
+    second: res,
+  } = await proposeAndConfirm(
     token,
     'Vendi unos audifonos a Maria Lopez, contacto maria@ejemplo.com',
   );
@@ -327,11 +382,11 @@ test('negación del store_admin: no ejecuta nada aunque el modelo intente llamar
   ]);
 
   const original = 'Vendí 2 iphone 15 a Juan';
-  const { first, afterFirst, second: res } = await proposeAndConfirm(
-    token,
-    original,
-    'No, cancelalo, fue un error',
-  );
+  const {
+    first,
+    afterFirst,
+    second: res,
+  } = await proposeAndConfirm(token, original, 'No, cancelalo, fue un error');
 
   expect(first.body.order).toBeNull();
   expect(afterFirst.orders).toBe(0);
@@ -353,11 +408,11 @@ test('corrección del store_admin ("sí, pero...") no cuenta como confirmación 
   ]);
 
   const original = 'Vendí 2 iphone 15';
-  const { first, afterFirst, second: res } = await proposeAndConfirm(
-    token,
-    original,
-    'Sí, pero eran 3 iphone 15 en total',
-  );
+  const {
+    first,
+    afterFirst,
+    second: res,
+  } = await proposeAndConfirm(token, original, 'Sí, pero eran 3 iphone 15 en total');
 
   expect(first.body.order).toBeNull();
   expect(afterFirst.orders).toBe(0);
@@ -410,7 +465,10 @@ test('producto inexistente y producto ambiguo no ejecutan la venta', async () =>
     }),
     finalMessage('No encuentro "Producto Inexistente" en tu catalogo.'),
   ]);
-  const { second: resInexistente } = await proposeAndConfirm(token, 'Vendi un Producto Inexistente');
+  const { second: resInexistente } = await proposeAndConfirm(
+    token,
+    'Vendi un Producto Inexistente',
+  );
   expect(resInexistente.status).toBe(200);
   expect(resInexistente.body.order).toBeNull();
   expect(create.calls).toBe(3);

@@ -1,5 +1,9 @@
 import db from '../models/index.js';
-import { getAgentClient, setClientFactoryForTests, NVIDIA_MODEL } from '../services/nvidia.client.js';
+import {
+  getAgentClient,
+  setClientFactoryForTests,
+  NVIDIA_MODEL,
+} from '../services/nvidia.client.js';
 
 export function __setClientFactoryForTests(factory) {
   setClientFactoryForTests(factory);
@@ -53,7 +57,8 @@ function buildSystemPrompt(categoryNames) {
 }
 
 function buildStrictCorrectivePrompt(categoryNames) {
-  const catList = categoryNames.length > 0 ? categoryNames.join(', ') : '(sin categorías, devolvé null)';
+  const catList =
+    categoryNames.length > 0 ? categoryNames.join(', ') : '(sin categorías, devolvé null)';
   return [
     'Tu ÚNICA respuesta es un objeto JSON válido con exactamente dos claves:',
     '"suggestedDescription" y "suggestedCategory".',
@@ -87,7 +92,10 @@ function parseStructuredSuggestion(content) {
     return null;
   };
 
-  const noCodeFences = content.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
+  const noCodeFences = content
+    .replace(/```(?:json)?\s*/gi, '')
+    .replace(/```/g, '')
+    .trim();
 
   const direct = tryParse(noCodeFences);
   if (direct) return direct;
@@ -118,9 +126,7 @@ export function sanitizeSuggestion(parsed, categoryNames) {
   const rawCategory =
     typeof parsed?.suggestedCategory === 'string' ? parsed.suggestedCategory.trim() : '';
 
-  const normalized = categoryNames.find(
-    (name) => name.toLowerCase() === rawCategory.toLowerCase(),
-  );
+  const normalized = categoryNames.find((name) => name.toLowerCase() === rawCategory.toLowerCase());
 
   return {
     suggestedDescription: description,
@@ -136,8 +142,14 @@ function buildDigest(messages) {
       lines.push(`- ${m.content}`);
     } else if (m.role === 'assistant') {
       const structured = parseStructuredSuggestion(m.content);
-      if (structured && typeof structured.suggestedDescription === 'string' && structured.suggestedDescription.trim()) {
-        lines.push(`- (Sugerencia actual del asistente) descripción: "${structured.suggestedDescription.trim()}"; categoría: "${structured.suggestedCategory ?? ''}"`);
+      if (
+        structured &&
+        typeof structured.suggestedDescription === 'string' &&
+        structured.suggestedDescription.trim()
+      ) {
+        lines.push(
+          `- (Sugerencia actual del asistente) descripción: "${structured.suggestedDescription.trim()}"; categoría: "${structured.suggestedCategory ?? ''}"`,
+        );
       }
     }
   }
@@ -169,9 +181,7 @@ export async function storeApplicationAssistantChat(req, res, next) {
 
     const categoryNames = await loadCategoryNames();
 
-    const userMessages = messages.filter(
-      (m) => m && typeof m === 'object' && m.role === 'user',
-    );
+    const userMessages = messages.filter((m) => m && typeof m === 'object' && m.role === 'user');
     if (userMessages.length === 0) {
       return res
         .status(400)

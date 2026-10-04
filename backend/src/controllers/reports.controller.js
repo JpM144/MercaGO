@@ -28,9 +28,7 @@ function bogotaParts(ms) {
 // Construye el instante que en America/Bogota corresponde a esas componentes
 // (fecha/hora de "pared"). month es 0-based, igual que Date.
 function bogotaDate(year, month, day, hour = 0, minute = 0, second = 0, millisecond = 0) {
-  return new Date(
-    Date.UTC(year, month, day, hour, minute, second, millisecond) - BOGOTA_OFFSET_MS,
-  );
+  return new Date(Date.UTC(year, month, day, hour, minute, second, millisecond) - BOGOTA_OFFSET_MS);
 }
 
 function partsKey({ year, month, day }) {
@@ -174,15 +172,11 @@ export async function getStoreReport(req, res, next) {
     const { period, date: dateParam } = req.query;
 
     if (!PERIODS.includes(period)) {
-      return res
-        .status(400)
-        .json({ error: 'period debe ser daily, weekly o monthly.' });
+      return res.status(400).json({ error: 'period debe ser daily, weekly o monthly.' });
     }
     const date = parseDateParam(dateParam);
     if (!date) {
-      return res
-        .status(400)
-        .json({ error: 'date debe tener formato YYYY-MM-DD.' });
+      return res.status(400).json({ error: 'date debe tener formato YYYY-MM-DD.' });
     }
 
     const range = computeRange(period, date);
@@ -266,9 +260,7 @@ export async function getTopProducts(req, res, next) {
   try {
     const monthsNum = Number(req.query.months ?? 6);
     if (!Number.isInteger(monthsNum) || monthsNum < 1 || monthsNum > 24) {
-      return res
-        .status(400)
-        .json({ error: 'months debe ser un entero entre 1 y 24.' });
+      return res.status(400).json({ error: 'months debe ser un entero entre 1 y 24.' });
     }
 
     const { from, to } = getTopProductsWindow(monthsNum);
@@ -280,12 +272,11 @@ export async function getTopProducts(req, res, next) {
 
     const totalsByProduct = new Map();
     for (const item of items) {
-      const entry =
-        totalsByProduct.get(item.productId) ?? {
-          productId: item.productId,
-          name: item.product.name,
-          quantity: 0,
-        };
+      const entry = totalsByProduct.get(item.productId) ?? {
+        productId: item.productId,
+        name: item.product.name,
+        quantity: 0,
+      };
       entry.quantity += item.quantity;
       totalsByProduct.set(item.productId, entry);
     }

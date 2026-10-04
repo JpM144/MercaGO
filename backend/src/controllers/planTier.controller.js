@@ -3,7 +3,12 @@ import { toPlanTierJson } from '../utils/planTier.util.js';
 
 export async function listPlanTiers(req, res, next) {
   try {
-    const tiers = await db.PlanTier.findAll({ order: [['price', 'ASC'], ['id', 'ASC']] });
+    const tiers = await db.PlanTier.findAll({
+      order: [
+        ['price', 'ASC'],
+        ['id', 'ASC'],
+      ],
+    });
 
     return res.json({
       tiers: tiers.map(toPlanTierJson),

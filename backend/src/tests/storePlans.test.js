@@ -303,9 +303,7 @@ describe('Plan de tiendas', () => {
     expect(res.status).toBe(200);
 
     const all = res.body.stores;
-    expect(all.map((s) => s.slug)).toEqual(
-      expect.arrayContaining([activa.slug, pausada.slug]),
-    );
+    expect(all.map((s) => s.slug)).toEqual(expect.arrayContaining([activa.slug, pausada.slug]));
     const found = all.find((s) => s.slug === activa.slug);
     expect(found.planStatus).toBe('active');
     expect(found.planExpiresAt).not.toBeNull();
@@ -353,9 +351,9 @@ describe('Plan de tiendas', () => {
     const superToken = await loginToken(
       (await createUser('super-appr@techstore.com', 'super_admin')).email,
     );
-    const apply = await request(app).post('/api/stores/apply').send(
-      applyPayload('tienda-aprob-plan', 'aprob-plan@techstore.com'),
-    );
+    const apply = await request(app)
+      .post('/api/stores/apply')
+      .send(applyPayload('tienda-aprob-plan', 'aprob-plan@techstore.com'));
     expect(apply.status).toBe(201);
 
     const approve = await request(app)

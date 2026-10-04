@@ -272,9 +272,7 @@ export async function createProduct(req, res, next) {
 
     const category = await db.Category.findOne({ where: { id: catId, storeId: req.store.id } });
     if (!category) {
-      return res
-        .status(400)
-        .json({ error: 'La categoría indicada no pertenece a tu tienda.' });
+      return res.status(400).json({ error: 'La categoría indicada no pertenece a tu tienda.' });
     }
 
     const limitError = await checkProductLimit(req.store);
@@ -396,9 +394,7 @@ export async function updateProduct(req, res, next) {
         where: { id: catId, storeId: req.store.id },
       });
       if (!category) {
-        return res
-          .status(400)
-          .json({ error: 'La categoría indicada no pertenece a tu tienda.' });
+        return res.status(400).json({ error: 'La categoría indicada no pertenece a tu tienda.' });
       }
       fields.categoryId = catId;
     }

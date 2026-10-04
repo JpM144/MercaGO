@@ -3,7 +3,11 @@ import path from 'path';
 import db from '../models/index.js';
 import { sendPlanChangeNotice } from '../services/mailer.js';
 import { PLAN_RECEIPTS_DIR } from '../middleware/upload.middleware.js';
-import { toPlanTierJson, getStorePlanTier, findPendingPlanChangeRequest } from '../utils/planTier.util.js';
+import {
+  toPlanTierJson,
+  getStorePlanTier,
+  findPendingPlanChangeRequest,
+} from '../utils/planTier.util.js';
 
 const RECEIPT_URL_PREFIX = '/uploads/plan-receipts/';
 
@@ -18,7 +22,11 @@ const RECEIPT_EXTENSIONS = new Map([
 const STATUSES = ['pending', 'approved', 'rejected'];
 
 const INCLUDES = [
-  { model: db.Store, as: 'store', attributes: ['id', 'name', 'slug', 'status', 'planTierId', 'ownerUserId'] },
+  {
+    model: db.Store,
+    as: 'store',
+    attributes: ['id', 'name', 'slug', 'status', 'planTierId', 'ownerUserId'],
+  },
   { model: db.PlanTier, as: 'requestedTier', attributes: ['id', 'name', 'price', 'product_limit'] },
   {
     model: db.User,
@@ -51,7 +59,13 @@ function toRequestJson(request) {
     price: requestedTier ? Number(requestedTier.price) : null,
     productLimit: requestedTier ? (requestedTier.product_limit ?? null) : null,
     store: store
-      ? { id: store.id, name: store.name, slug: store.slug, status: store.status, planTierId: store.planTierId }
+      ? {
+          id: store.id,
+          name: store.name,
+          slug: store.slug,
+          status: store.status,
+          planTierId: store.planTierId,
+        }
       : null,
     requestedTier: requestedTier ? toPlanTierJson(requestedTier) : null,
     requestedBy: requestedBy
@@ -74,7 +88,10 @@ export async function createPlanChangeRequest(req, res, next) {
       receiptPath ? fs.unlink(receiptPath).catch(() => {}) : Promise.resolve();
 
     const requestedTierId = Number(
-      req.body?.requested_tier_id ?? req.body?.requestedTierId ?? req.body?.tier_id ?? req.body?.tierId,
+      req.body?.requested_tier_id ??
+        req.body?.requestedTierId ??
+        req.body?.tier_id ??
+        req.body?.tierId,
     );
 
     if (!Number.isInteger(requestedTierId)) {
@@ -217,7 +234,9 @@ export async function getPlanChangeRequestReceipt(req, res, next) {
 async function notifyPlanChange({ store, request, status, reason }) {
   try {
     if (!store) {
-      throw new Error(`No se pudo notificar el cambio de plan: la solicitud ${request?.id} no incluye la tienda.`);
+      throw new Error(
+        `No se pudo notificar el cambio de plan: la solicitud ${request?.id} no incluye la tienda.`,
+      );
     }
     const owner = request.requestedBy ?? (await db.User.findByPk(store.ownerUserId));
     if (!owner) {
@@ -334,7 +353,12 @@ export async function approvePlanChangeRequest(req, res, next) {
     return res.json({
       message: `Solicitud aprobada: ${store.name} pasó al plan ${request.requestedTier?.name}.`,
       request: toRequestJson(await findRequest(request.id)),
-      store: { id: store.id, name: store.name, slug: store.slug, planTierId: request.requestedTierId },
+      store: {
+        id: store.id,
+        name: store.name,
+        slug: store.slug,
+        planTierId: request.requestedTierId,
+      },
     });
   } catch (error) {
     return next(error);

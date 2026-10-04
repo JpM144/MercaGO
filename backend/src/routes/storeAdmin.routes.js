@@ -19,7 +19,9 @@ import {
   listMyPlanChangeRequests,
 } from '../controllers/planChangeRequest.controller.js';
 import {
-  getStoreReport, getReportTimeseries, getTopProducts,
+  getStoreReport,
+  getReportTimeseries,
+  getTopProducts,
 } from '../controllers/reports.controller.js';
 import { requireApprovedStore, requireStoreAdmin } from '../middleware/auth.middleware.js';
 import { handlePlanReceiptUpload } from '../middleware/upload.middleware.js';
@@ -40,11 +42,7 @@ router.post(
   handlePlanReceiptUpload,
   createPlanChangeRequest,
 );
-router.get(
-  '/plan-change-requests/:id/receipt',
-  requireStoreAdmin,
-  getMyPlanChangeRequestReceipt,
-);
+router.get('/plan-change-requests/:id/receipt', requireStoreAdmin, getMyPlanChangeRequestReceipt);
 router.get('/products', requireStoreAdmin, requireApprovedStore, listStoreAdminProducts);
 router.post('/sales-assistant/chat', requireStoreAdmin, requireApprovedStore, salesAssistantChat);
 
