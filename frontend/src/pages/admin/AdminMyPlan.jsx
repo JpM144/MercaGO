@@ -5,12 +5,12 @@ import {
   fetchPlanTiers,
   getMyStorePlan,
   listMyPlanChangeRequests,
-  receiptFileUrl,
 } from '../../services/plans.js';
 import { formatDate, formatPrice } from '../../utils/format.js';
 import Spinner from '../../components/Spinner.jsx';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import Notice from '../../components/Notice.jsx';
+import ReceiptLink from '../../components/ReceiptLink.jsx';
 
 export const PLAN_STATUS_LABELS = {
   pending: 'Pendiente de revisión',
@@ -359,15 +359,8 @@ export default function AdminMyPlan() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {receiptFileUrl(item.receiptUrl) ? (
-                        <a
-                          href={receiptFileUrl(item.receiptUrl)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-semibold text-brand-700 underline hover:text-brand-800"
-                        >
-                          Ver comprobante
-                        </a>
+                      {item.receiptUrl ? (
+                        <ReceiptLink token={token} requestId={item.id} scope="store" />
                       ) : (
                         <span className="text-xs text-ink-400">—</span>
                       )}

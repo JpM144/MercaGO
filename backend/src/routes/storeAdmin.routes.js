@@ -15,6 +15,7 @@ import {
 } from '../controllers/category.controller.js';
 import {
   createPlanChangeRequest,
+  getMyPlanChangeRequestReceipt,
   listMyPlanChangeRequests,
 } from '../controllers/planChangeRequest.controller.js';
 import {
@@ -38,6 +39,11 @@ router.post(
   requireApprovedStore,
   handlePlanReceiptUpload,
   createPlanChangeRequest,
+);
+router.get(
+  '/plan-change-requests/:id/receipt',
+  requireStoreAdmin,
+  getMyPlanChangeRequestReceipt,
 );
 router.get('/products', requireStoreAdmin, requireApprovedStore, listStoreAdminProducts);
 router.post('/sales-assistant/chat', requireStoreAdmin, requireApprovedStore, salesAssistantChat);

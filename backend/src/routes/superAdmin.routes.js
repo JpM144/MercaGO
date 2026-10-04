@@ -10,6 +10,7 @@ import {
 import {
   listPlanChangeRequests,
   approvePlanChangeRequest,
+  getPlanChangeRequestReceipt,
   rejectPlanChangeRequest,
 } from '../controllers/planChangeRequest.controller.js';
 
@@ -18,6 +19,7 @@ const router = Router();
 router.use(requireSuperAdmin);
 
 router.get('/plan-change-requests', listPlanChangeRequests);
+router.get('/plan-change-requests/:id/receipt', getPlanChangeRequestReceipt);
 router.put('/plan-change-requests/:id/approve', approvePlanChangeRequest);
 router.put('/plan-change-requests/:id/reject', rejectPlanChangeRequest);
 

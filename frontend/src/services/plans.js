@@ -52,10 +52,32 @@ export function createPlanChangeRequest(token, requestedTierId, receiptFile) {
   });
 }
 
-/** URL absoluto del comprobante servido por la API (las solicitudes viejas pueden no tenerlo). */
-export function receiptFileUrl(receiptUrl) {
-  return receiptUrl ? `${API_URL}${receiptUrl}` : null;
+/**
+ * El comprobante ya no se sirve por una URL pública: se pide con el token de
+ * autenticación y se devuelve como Blob para no exponer un link adivinable.
+ */
+async function requestReceiptBlob(token, path) {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(data.error ?? `La API respondió con error ${response.status}.`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.blob();
 }
+
+/** Comprobante de una solicitud propia (store_admin). */
+export const fetchMyPlanReceipt = (token, id) =>
+  requestReceiptBlob(token, `/api/store-admin/plan-change-requests/${id}/receipt`);
+
+/** Comprobante de cualquier solicitud (super_admin). */
+export const fetchAnyPlanReceipt = (token, id) =>
+  requestReceiptBlob(token, `/api/super-admin/plan-change-requests/${id}/receipt`);
 
 export function listAllPlanChangeRequests(token, status) {
   const query = status && status !== 'all' ? `?status=${encodeURIComponent(status)}` : '';

@@ -22,14 +22,18 @@ import { errorHandler } from './middleware/error.middleware.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.resolve(__dirname, '../uploads');
-fs.mkdirSync(uploadsDir, { recursive: true });
+const reviewPhotosDir = path.join(uploadsDir, 'reviews');
+fs.mkdirSync(reviewPhotosDir, { recursive: true });
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-app.use('/uploads', express.static(uploadsDir));
+// Solo las fotos de reseñas se sirven estáticamente. Los comprobantes de plan son
+// datos sensibles: se entregan por endpoints autenticados (store-admin / super-admin),
+// nunca por una URL pública.
+app.use('/uploads/reviews', express.static(reviewPhotosDir));
 
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);

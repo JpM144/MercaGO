@@ -4,13 +4,13 @@ import {
   approvePlanChangeRequest,
   fetchPlanTiers,
   listAllPlanChangeRequests,
-  receiptFileUrl,
   rejectPlanChangeRequest,
 } from '../../services/plans.js';
 import { formatDate, formatPrice } from '../../utils/format.js';
 import Spinner from '../../components/Spinner.jsx';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import Notice from '../../components/Notice.jsx';
+import ReceiptLink from '../../components/ReceiptLink.jsx';
 import { PLAN_STATUS_LABELS, PLAN_STATUS_STYLES, ProductLimitText } from '../admin/AdminMyPlan.jsx';
 
 const FILTERS = [
@@ -260,18 +260,8 @@ export default function SuperAdminPlanChangesPage() {
                   </td>
                   <td className="px-4 py-3 text-ink-600">{formatDate(request.createdAt)}</td>
                   <td className="px-4 py-3">
-                    {receiptFileUrl(request.receiptUrl) ? (
-                      <a
-                        href={receiptFileUrl(request.receiptUrl)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 underline hover:text-brand-800"
-                      >
-                        Ver comprobante
-                        <span className="text-[10px] text-ink-400" aria-hidden="true">
-                          ↗
-                        </span>
-                      </a>
+                    {request.receiptUrl ? (
+                      <ReceiptLink token={token} requestId={request.id} scope="superAdmin" />
                     ) : (
                       <span className="text-xs text-ink-400">Sin comprobante</span>
                     )}

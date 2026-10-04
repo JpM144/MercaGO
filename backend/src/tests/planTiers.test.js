@@ -1,8 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import app from '../app.js';
 import db from '../models/index.js';
 import { __setTransporterFactoryForTests } from '../services/mailer.js';
+import { PLAN_RECEIPTS_DIR } from '../middleware/upload.middleware.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -110,6 +113,11 @@ function postChangeRequest(token, requestedTierId, receipt = receiptFile('png'))
     });
   }
   return req;
+}
+
+/** Nombres de los comprobantes que hay ahora mismo en la carpeta de uploads. */
+function receiptsOnDisk() {
+  return fs.readdirSync(PLAN_RECEIPTS_DIR).sort();
 }
 
 let categoryId;
@@ -355,7 +363,7 @@ describe('Niveles de plan y solicitudes de cambio', () => {
       expect(await db.PlanChangeRequest.count()).toBe(0);
     });
 
-    test('con imagen devuelve 201 y el receiptUrl es servible', async () => {
+    test('con imagen devuelve 201 y el comprobante se sirve por el endpoint autenticado', async () => {
       const { owner } = await createStore('rcp-b@techstore.com', basico.id);
       const token = await loginToken(owner.email);
 
@@ -364,7 +372,13 @@ describe('Niveles de plan y solicitudes de cambio', () => {
       expect(res.status).toBe(201);
       expect(res.body.request.receiptUrl).toMatch(/^\/uploads\/plan-receipts\/.+\.png$/);
 
-      const served = await request(app).get(res.body.request.receiptUrl);
+      // La URL vieja ya no sirve el comprobante: ahora exige token.
+      const anonymous = await request(app).get(res.body.request.receiptUrl);
+      expect(anonymous.status).toBe(404);
+
+      const served = await request(app)
+        .get(`/api/store-admin/plan-change-requests/${res.body.request.id}/receipt`)
+        .set('Authorization', `Bearer ${token}`);
       expect(served.status).toBe(200);
     });
 
@@ -403,7 +417,7 @@ describe('Niveles de plan y solicitudes de cambio', () => {
       expect(await db.PlanChangeRequest.count()).toBe(0);
     });
 
-    test('el listado del super_admin incluye receiptUrl y el comprobante abre', async () => {
+    test('el listado del super_admin incluye receiptUrl y el comprobante abre con su token', async () => {
       const { owner } = await createStore('rcp-e@techstore.com', basico.id);
       const token = await loginToken(owner.email);
       await postChangeRequest(token, premium.id, receiptFile('png'));
@@ -417,7 +431,12 @@ describe('Niveles de plan y solicitudes de cambio', () => {
       expect(res.body.requests).toHaveLength(1);
       expect(res.body.requests[0].receiptUrl).toMatch(/^\/uploads\/plan-receipts\/.+\.png$/);
 
-      const served = await request(app).get(res.body.requests[0].receiptUrl);
+      const anonymous = await request(app).get(res.body.requests[0].receiptUrl);
+      expect(anonymous.status).toBe(404);
+
+      const served = await request(app)
+        .get(`/api/super-admin/plan-change-requests/${res.body.requests[0].id}/receipt`)
+        .set('Authorization', `Bearer ${tokenAdmin}`);
       expect(served.status).toBe(200);
     });
 
@@ -446,6 +465,63 @@ describe('Niveles de plan y solicitudes de cambio', () => {
 
       expect(approved.status).toBe(200);
       expect(approved.body.request.receiptUrl).toBe(created.body.request.receiptUrl);
+    });
+  });
+
+  describe('limpieza de comprobantes huérfanos', () => {
+    // multer escribe el archivo antes de que el controller valide nada, así que cada
+    // rechazo tiene que borrarlo. Si la ruta se resuelve con process.cwd() en vez de
+    // con la del módulo, el unlink apunta a otro lado y el huérfano queda en disco
+    // (el .catch(() => {}) lo oculta), por eso se compara el contenido de la carpeta.
+    test('si el plan solicitado no existe, el comprobante se borra de verdad', async () => {
+      const { owner } = await createStore('huerfano-a@techstore.com', basico.id);
+      const token = await loginToken(owner.email);
+      const before = receiptsOnDisk();
+
+      const res = await postChangeRequest(token, 9999, receiptFile('png'));
+
+      expect(res.status).toBe(404);
+      expect(await db.PlanChangeRequest.count()).toBe(0);
+      expect(receiptsOnDisk()).toEqual(before);
+    });
+
+    test('si se pide el plan que ya tiene, el comprobante se borra de verdad', async () => {
+      const { owner } = await createStore('huerfano-b@techstore.com', basico.id);
+      const token = await loginToken(owner.email);
+      const before = receiptsOnDisk();
+
+      const res = await postChangeRequest(token, basico.id, receiptFile('png'));
+
+      expect(res.status).toBe(409);
+      expect(await db.PlanChangeRequest.count()).toBe(0);
+      expect(receiptsOnDisk()).toEqual(before);
+    });
+
+    test('si ya hay una solicitud pendiente, el comprobante se borra de verdad', async () => {
+      const { owner } = await createStore('huerfano-c@techstore.com', basico.id);
+      const token = await loginToken(owner.email);
+      await postChangeRequest(token, premium.id, receiptFile('png'));
+      const before = receiptsOnDisk();
+
+      const res = await postChangeRequest(token, estandar.id, receiptFile('png'));
+
+      expect(res.status).toBe(409);
+      expect(await db.PlanChangeRequest.count()).toBe(1);
+      expect(receiptsOnDisk()).toEqual(before);
+    });
+
+    test('el comprobante de una solicitud creada sí queda en la carpeta', async () => {
+      const { owner } = await createStore('huerfano-d@techstore.com', basico.id);
+      const token = await loginToken(owner.email);
+      const before = receiptsOnDisk();
+
+      const res = await postChangeRequest(token, premium.id, receiptFile('png'));
+
+      expect(res.status).toBe(201);
+      const receiptName = path.basename(res.body.request.receiptUrl);
+      const after = receiptsOnDisk();
+      expect(after).toHaveLength(before.length + 1);
+      expect(after).toContain(receiptName);
     });
   });
 
